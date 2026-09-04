@@ -20,6 +20,8 @@ export default function GalleryClient() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [expiresAt, setExpiresAt] = useState<Date | null>(null);
+  const [now, setNow] = useState<Date>(() => new Date());
 
   // Auth gate
   useEffect(() => {
@@ -61,26 +63,51 @@ export default function GalleryClient() {
     };
   }, [videoId]);
 
+  // Fetch the video's expires_at so we can show a "X hours left" countdown
+  // and let the user understand the urgency. We read the row directly via
+  // the anon-key client (RLS restricts to the owner's own rows).
+  useEffect(() => {
+    if (!videoId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const { data, error: dbError } = await supabase
+          .from("videos")
+          .select("expires_at")
+          .eq("id", videoId)
+          .single();
+        if (cancelled) return;
+        if (!dbError && data?.expires_at) {
+          setExpiresAt(new Date(data.expires_at));
+        }
+      } catch {
+        // RLS may block this from the anon client if the user just
+        // logged out — silently ignore and skip the countdown.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [videoId]);
+
+  // Re-render once a minute so the countdown updates without a full refresh.
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const handleFinishSession = async () => {
     if (!videoId) return;
     setIsDeleting(true);
     setError(null);
     setInfo(null);
     try {
-      // 1. Delete the reel objects from storage (only paths the user owns)
-      for (const reel of reels) {
-        if (!reel.storage_path) continue;
-        const userPrefix = `${(await supabase.auth.getUser()).data.user?.id}/`;
-        if (!reel.storage_path.startsWith(userPrefix)) continue;
-        await supabase.storage.from("reels-videos").remove([reel.storage_path]);
-      }
-
-      // 2. Delete the original video via DB cascade. RLS restricts to the owner.
-      const { error: dbError } = await supabase
-        .from("videos")
-        .delete()
-        .eq("id", videoId);
-      if (dbError) throw dbError;
+      // Tier-1 instant kill — backend handles everything in one call:
+      // deletes the original upload (videos.gcs_uri), every reel's
+      // storage object, and the videos row (cascade clears the rest).
+      // We previously did this client-side, which leaked the original
+      // upload and required the user to be online with the right RLS.
+      await api.deleteVideo(videoId);
 
       setInfo("Session cleared. Redirecting…");
       setTimeout(() => router.push("/"), 1000);
@@ -125,6 +152,23 @@ export default function GalleryClient() {
             <p className="text-gray-400 mt-2">
               Download your clips and share them with the world!
             </p>
+            {expiresAt && (() => {
+              const msLeft = expiresAt.getTime() - now.getTime();
+              if (msLeft <= 0) {
+                return (
+                  <p className="text-red-400 text-sm mt-1">
+                    ⏰ Session expired — files will be deleted on the next server sweep.
+                  </p>
+                );
+              }
+              const hoursLeft = Math.floor(msLeft / 3_600_000);
+              const minutesLeft = Math.floor((msLeft % 3_600_000) / 60_000);
+              return (
+                <p className="text-amber-400/80 text-sm mt-1">
+                  ⏰ {hoursLeft}h {minutesLeft}m until auto-delete
+                </p>
+              );
+            })()}
           </div>
           <button
             onClick={() => setShowDeleteModal(true)}

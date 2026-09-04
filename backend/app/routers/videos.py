@@ -88,12 +88,15 @@ async def process_video(
     current: CurrentUser = Depends(get_current_user),
 ):
     try:
-        # Ownership check: only the row's owner can trigger processing
-        db_res = supabase.table("videos").select("id, status").eq("id", video_id).eq(
+        # Ownership check + Tier-3 expiry check
+        own = supabase.table("videos").select("id, status, expires_at").eq("id", video_id).eq(
             "user_id", current.id
         ).execute()
-        if not db_res.data:
+        if not own.data:
             raise HTTPException(status_code=404, detail="Video not found")
+        expires_at = own.data[0].get("expires_at")
+        if expires_at and datetime.now(timezone.utc) > datetime.fromisoformat(expires_at):
+            raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
 
         supabase.table("videos").update({"status": "UPLOADED"}).eq("id", video_id).eq(
             "user_id", current.id
@@ -125,11 +128,15 @@ async def get_video_status(
     current: CurrentUser = Depends(get_current_user),
 ):
     # Verify the caller owns the video before exposing any job state
-    own = supabase.table("videos").select("id, status").eq("id", video_id).eq(
+    own = supabase.table("videos").select("id, status, expires_at").eq("id", video_id).eq(
         "user_id", current.id
     ).execute()
     if not own.data:
         raise HTTPException(status_code=404, detail="Video not found")
+    # Tier-3 failsafe
+    expires_at = own.data[0].get("expires_at")
+    if expires_at and datetime.now(timezone.utc) > datetime.fromisoformat(expires_at):
+        raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
 
     try:
         job_res = supabase.table("jobs").select("current_stage, status, last_error").eq(
@@ -216,3 +223,61 @@ async def analyze_video(
     except Exception as exc:  # noqa: BLE001
         logger.exception("analyze_video crashed for %s", request.video_id)
         raise HTTPException(status_code=500, detail="AI analysis failed")
+
+
+# --- API 4: Delete (user-initiated Tier-1 "instant kill") ---
+# Hard-deletes a video session: original upload + all reels + DB row.
+# Frontend "Finish & Clear Session" button calls this. The pg_cron job
+# calls the same function for the Tier-2 auto-cleanup, so behavior is
+# identical regardless of who triggers it.
+@router.delete("/{video_id}")
+async def delete_video(
+    video_id: str = Path(..., min_length=1, max_length=64),
+    current: CurrentUser = Depends(get_current_user),
+):
+    try:
+        # Ownership check — only the row's owner can delete it
+        own = supabase.table("videos").select("id, gcs_uri").eq("id", video_id).eq(
+            "user_id", current.id
+        ).execute()
+        if not own.data:
+            raise HTTPException(status_code=404, detail="Video not found")
+        original_storage_path = own.data[0]["gcs_uri"]
+
+        # Collect every storage path we need to remove: the original upload
+        # plus every reel's output. Both are in the same bucket.
+        reels_res = supabase.table("reels").select("storage_path").eq(
+            "video_id", video_id
+        ).execute()
+        paths_to_delete = [original_storage_path]
+        for r in (reels_res.data or []):
+            sp = r.get("storage_path")
+            if sp and sp not in paths_to_delete:
+                paths_to_delete.append(sp)
+
+        # Tier-1: best-effort storage cleanup. Don't fail the request if
+        # storage is unavailable — the DB row deletion is what actually
+        # protects the user. A 24h pg_cron pass will sweep up any orphans.
+        try:
+            storage_service.delete_files(paths_to_delete)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Storage delete failed for video %s: %s", video_id, exc)
+
+        # DB row delete. ON DELETE CASCADE on the FKs (transcripts,
+        # edit_plans, reels, jobs) takes care of the rest. RLS makes
+        # sure we can only delete our own row.
+        supabase.table("videos").delete().eq("id", video_id).eq(
+            "user_id", current.id
+        ).execute()
+
+        return {
+            "message": "Session cleared. All videos and reels have been deleted.",
+            "video_id": video_id,
+            "deleted_storage_paths": len(paths_to_delete),
+        }
+
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("delete_video crashed for %s", video_id)
+        raise HTTPException(status_code=500, detail="Could not clear session")

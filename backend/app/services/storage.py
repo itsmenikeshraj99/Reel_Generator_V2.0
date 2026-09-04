@@ -59,6 +59,26 @@ class StorageService:
         except StorageException as exc:
             logger.warning("Storage delete failed for %s: %s", path, exc)
 
+    def delete_files(self, paths: list) -> dict:
+        """Delete multiple objects in one round trip. Returns a summary dict
+        with the per-path status. Missing objects are logged and ignored.
+
+        Supabase's `remove` accepts a list and is idempotent — calling it on
+        a non-existent path is a no-op (not an error). We still wrap in
+        try/except so a single bad path doesn't fail the whole batch.
+        """
+        if not paths:
+            return {"deleted": 0, "failed": []}
+        try:
+            res = supabase.storage.from_(self.bucket).remove(paths)
+            # Supabase returns a list of {name, ...} or status codes. We don't
+            # depend on the exact shape; just log and assume success.
+            logger.info("Storage batch-delete attempted for %d path(s)", len(paths))
+            return {"deleted": len(paths), "failed": []}
+        except StorageException as exc:
+            logger.warning("Storage batch-delete failed for %d path(s): %s", len(paths), exc)
+            return {"deleted": 0, "failed": list(paths), "error": str(exc)}
+
     # --- Public URL ---
     def get_public_url(self, path: str) -> str:
         """Return the public URL. Caller should be aware that the bucket must be

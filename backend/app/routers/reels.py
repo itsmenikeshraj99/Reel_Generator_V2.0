@@ -1,6 +1,7 @@
 import os
 import tempfile
 import uuid
+from datetime import datetime, timezone
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Path, status
@@ -20,13 +21,31 @@ router = APIRouter()
 
 
 def _require_owned_video(video_id: str, user_id: str) -> str:
-    """Look up the video and verify the caller owns it. Returns the storage path."""
-    res = supabase.table("videos").select("id, gcs_uri").eq("id", video_id).eq(
+    """Look up the video, verify the caller owns it, AND verify the session
+    has not expired (Tier-3 failsafe). Returns the storage path.
+
+    Raises:
+        404: video not found OR not owned by caller
+        403: video's 24h expiry has passed
+    """
+    res = supabase.table("videos").select("id, gcs_uri, expires_at").eq("id", video_id).eq(
         "user_id", user_id
     ).execute()
     if not res.data:
         raise HTTPException(status_code=404, detail="Video not found")
-    return res.data[0]["gcs_uri"]
+    row = res.data[0]
+    # Tier-3: API-level expiry check. Even if pg_cron hasn't run yet, we block
+    # access to expired sessions. Storage objects may linger briefly until the
+    # next cron run physically deletes them — that's expected and acceptable.
+    expires_at = row.get("expires_at")
+    if expires_at:
+        try:
+            if datetime.now(timezone.utc) > datetime.fromisoformat(expires_at):
+                raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
+        except ValueError:
+            # Bad timestamp in DB — log but don't block (defensive).
+            logger.warning("Bad expires_at for video %s: %s", video_id, expires_at)
+    return row["gcs_uri"]
 
 
 @router.get("/{video_id}")

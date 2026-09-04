@@ -60,6 +60,12 @@ export interface Reel {
   storage_path?: string;
 }
 
+export interface DeleteResponse {
+  message: string;
+  video_id: string;
+  deleted_storage_paths: number;
+}
+
 export const api = {
   async uploadUrl(filename: string): Promise<UploadUrlResponse> {
     return request<UploadUrlResponse>("/videos/upload-url", {
@@ -81,5 +87,15 @@ export const api = {
 
   async getReels(videoId: string): Promise<{ reels: Reel[] }> {
     return request<{ reels: Reel[] }>(`/reels/${videoId}`);
+  },
+
+  // Tier-1 "instant kill". Backend handles the original video + all
+  // reels + the DB row (cascade). This replaces the old frontend
+  // approach of calling supabase.storage.remove() then deleting the
+  // videos row separately — which leaked the original upload.
+  async deleteVideo(videoId: string): Promise<DeleteResponse> {
+    return request<DeleteResponse>(`/videos/${videoId}`, {
+      method: "DELETE",
+    });
   },
 };

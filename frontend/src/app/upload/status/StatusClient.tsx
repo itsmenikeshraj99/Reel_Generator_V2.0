@@ -122,8 +122,21 @@ export default function StatusClient() {
         }
       }
     } catch (err) {
+      // Tier-3 failsafe: backend returns 403 once the 24h window passes.
+      // We stop polling, surface a clear "session ended" message, and
+      // give the user a path back to the home page.
+      const msg = err instanceof Error ? err.message : "Failed to fetch status";
+      if (msg.toLowerCase().includes("expired") || msg.toLowerCase().includes("session ended")) {
+        setStatus("EXPIRED");
+        setError("This session has ended. Your video and reels were auto-deleted after 24 hours.");
+        if (pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        return;
+      }
       // Don't stop polling on transient errors; just record the last one.
-      setError(err instanceof Error ? err.message : "Failed to fetch status");
+      setError(msg);
     }
   }, [videoId]);
 
@@ -270,7 +283,7 @@ export default function StatusClient() {
         </div>
 
         {/* Error banner (also shown for transient poll errors) */}
-        {error && isFailed && (
+        {error && (isFailed || status === "EXPIRED") && (
           <div
             role="alert"
             className="mt-8 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2"
@@ -303,6 +316,15 @@ export default function StatusClient() {
         )}
 
         {isFailed && (
+          <Link
+            href="/"
+            className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
+          >
+            Back to Home
+          </Link>
+        )}
+
+        {status === "EXPIRED" && (
           <Link
             href="/"
             className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
