@@ -15,6 +15,7 @@ times before giving up. A give-up sets `status = PERMANENTLY_FAILED` so the
 UI can distinguish "we tried, it didn't work" from "we crashed mid-run".
 """
 import asyncio
+import gc
 import logging
 import os
 import tempfile
@@ -457,6 +458,14 @@ class Pipeline:
                     os.remove(reframed_path)
                 except OSError:
                     pass
+
+            # Force a Python GC pass between the heavy ffmpeg calls.
+            # ffmpeg subprocesses release their memory on exit, but
+            # Python holds onto the Process handles and any frame
+            # buffers pip/the supabase client cached during the
+            # previous stage. On a 1GB worker this is the difference
+            # between fitting and OOM during the next stage.
+            gc.collect()
 
             # 3. Caption overlay: best-effort. On failure we still ship the
             #    caption-stripped video rather than nothing.

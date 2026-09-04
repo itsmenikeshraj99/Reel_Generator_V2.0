@@ -25,8 +25,13 @@ app = FastAPI(title="AI Reels Worker")
 # prevents other requests (like /process) from being accepted.
 # A small thread pool lets us dispatch pipelines to a background thread while
 # the event loop stays responsive to incoming HTTP requests.
+#
+# Memory: default 1 (was 2) because Railway free-tier workers ship
+# with 1GB RAM. Two parallel ffmpeg pipelines at 720p would still
+# peak around 1.2GB combined, which OOMs. One-at-a-time is the
+# safe default; paid plans can override via WORKER_MAX_PARALLEL env.
 _EXECUTOR = ThreadPoolExecutor(
-    max_workers=int(os.getenv("WORKER_MAX_PARALLEL", "2")),
+    max_workers=int(os.getenv("WORKER_MAX_PARALLEL", "1")),
     thread_name_prefix="pipeline",
 )
 

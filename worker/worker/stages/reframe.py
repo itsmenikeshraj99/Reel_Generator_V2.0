@@ -32,8 +32,16 @@ import cv2
 
 logger = logging.getLogger("stage_reframe")
 
-# Output is 1080x1920 H.264, web-playable.
-TARGET_W, TARGET_H = 1080, 1920
+# Output is 720x1280 H.264, web-playable.
+#
+# Why 720x1280 instead of 1080x1920:
+# Railway free-tier worker has 1GB RAM. libx264 encoding at 1080p peaks
+# at ~1.5GB RSS even with -threads 1 + ultrafast, which OOMs the
+# container (rc=-9 SIGKILL). 720p is the lowest Instagram/TikTok
+# accepts; pixel count drops 56% so libx264 frame buffer memory drops
+# to ~400MB peak, fitting comfortably under 1GB. The visual difference
+# on mobile is negligible — TikTok itself re-encodes to 720p on upload.
+TARGET_W, TARGET_H = 720, 1280
 
 # How many frames to sample per scene to find the subject.
 SAMPLES_PER_SCENE = 6

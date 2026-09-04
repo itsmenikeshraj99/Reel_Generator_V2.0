@@ -88,8 +88,8 @@ async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
             "-vf",
-            "scale=1080:1920:force_original_aspect_ratio=decrease,"
-            "pad=1080:1920:0:420:black,"
+            "scale=720:1280:force_original_aspect_ratio=decrease,"
+            "pad=720:1280:0:280:black,"
             "setsar=1",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
