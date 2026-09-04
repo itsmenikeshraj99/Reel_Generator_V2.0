@@ -338,36 +338,26 @@ End-to-end:
 
 ## ☁️ Deploy
 
-The project ships with everything needed to deploy the backend and worker to
-[Google Cloud Run](https://cloud.google.com/run) and the frontend to
-[Vercel](https://vercel.com) or Cloud Run.
+The project ships with everything needed to deploy the backend and
+worker to [Railway](https://railway.app) and the frontend to
+[Vercel](https://vercel.com) (free tier, no card required). Earlier
+versions targeted Google Cloud Run; the Dockerfiles are unchanged, so
+swapping back is a config-only migration — see
+[`deploy/SETUP.md`](deploy/SETUP.md#migration-back-to-cloud-run-when-you-get-a-visa).
 
-**Cost: ~$5/mo** for a demo / portfolio deployment (1–5 videos/day).
+**Cost: $0–5/mo** for a demo / portfolio deployment (1–5 videos/day).
+The Railway $5 trial credit usually covers this exactly.
 
 ```bash
 # 1. Read the step-by-step guide
 open deploy/SETUP.md
-
-# 2. Set up env vars
-cp deploy/env.prod.example deploy/env.prod   # private, not committed
-$EDITOR deploy/env.prod
-set -a; source deploy/env.prod; set +a
-
-# 3. Deploy
-./deploy/deploy-backend.sh
-./deploy/deploy-worker.sh
-# (then update WORKER_URL on the backend with the worker's URL)
-
-# 4. Verify
-open deploy/SMOKE_TEST.md
 ```
 
 | File                                          | What                                                |
 | --------------------------------------------- | --------------------------------------------------- |
-| [`deploy/SETUP.md`](deploy/SETUP.md)          | From zero GCP project → first deploy                |
+| [`deploy/SETUP.md`](deploy/SETUP.md)          | From zero Railway/Vercel accounts → first deploy    |
 | [`deploy/SMOKE_TEST.md`](deploy/SMOKE_TEST.md) | End-to-end test of the deployed stack               |
-| [`deploy/deploy-backend.sh`](deploy/deploy-backend.sh) | One-shot backend build + deploy              |
-| [`deploy/deploy-worker.sh`](deploy/deploy-worker.sh)   | One-shot worker build + deploy                |
+| [`deploy/env.prod.example`](deploy/env.prod.example) | Env vars template (paste into Railway/Vercel) |
 | [`vercel.json`](vercel.json)                  | Vercel config (auto-deploys from `main`)            |
 
 
@@ -380,7 +370,8 @@ open deploy/SMOKE_TEST.md
 - [x] Scene-aware reframing
 - [x] Caption overlay
 - [x] Public gallery with download
-- [x] Cloud Run deploy (backend + worker) + Vercel/Cloud Run frontend
+- [x] Railway deploy (backend + worker) + Vercel (frontend) — no card required
+- [ ] Google Cloud Run deploy (Phase 11 — switch back when you have a Visa/Mastercard)
 - [ ] Cloud Tasks queue (Phase 11 — production-grade queueing)
 - [ ] Secret Manager + custom domain (Phase 11 hardening)
 - [ ] Background music / B-roll suggestions

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # =============================================================
-# Backend Dockerfile — Cloud Run
+# Backend Dockerfile — Railway / any Docker host
 # Multi-stage: build deps in a builder, copy the venv into a slim
 # runtime image. ~150MB final image.
 # =============================================================
@@ -39,7 +39,7 @@ COPY --chown=app:app app ./app
 
 USER 65532
 
-# Cloud Run sets $PORT (default 8080). uvicorn reads it via shell.
+# Railway (and most PaaS) sets $PORT (default 8080). uvicorn reads it via shell.
 ENV PORT=8080
 EXPOSE 8080
 

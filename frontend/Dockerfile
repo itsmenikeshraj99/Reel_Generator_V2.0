@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # =============================================================
-# Frontend Dockerfile — Cloud Run (alternative to Vercel)
+# Frontend Dockerfile — Railway / any Docker host (alternative to Vercel)
 # Multi-stage: install deps + build in builder, then ship a slim
 # runtime with only the standalone output.
 # =============================================================

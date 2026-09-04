@@ -1,20 +1,21 @@
-# Smoke test — local frontend → production backend → production worker
+# Smoke test — local frontend → Railway backend → Railway worker
 
-After you've deployed the backend, worker, and frontend (see
-[`SETUP.md`](SETUP.md)), run this to confirm the whole stack works
-end-to-end.
+After you've deployed the backend + worker to Railway and the frontend
+to Vercel (see [`SETUP.md`](SETUP.md)), run this to confirm the whole
+stack works end-to-end.
 
-The "production" parts are the backend and worker on Cloud Run. The
+The "production" parts are the backend and worker on Railway. The
 frontend runs on your laptop — this is the cheapest, fastest way to
-verify the deploy without spinning up a separate Vercel project.
+verify the deploy without redeploying the frontend.
 
 ---
 
 ## 0. Set up
 
 ```bash
-export BACKEND_URL="https://reels-backend-xxx.a.run.app"
-export WORKER_URL="https://reels-worker-xxx.a.run.app"
+export BACKEND_URL="https://reels-backend-production-xxxx.up.railway.app"
+export WORKER_URL="https://reels-worker-production-xxxx.up.railway.app"
+export FRONTEND_URL="https://reels-generator-xxx.vercel.app"   # only for the curl E2E in §4
 ```
 
 ---
@@ -31,13 +32,8 @@ curl -s $WORKER_URL/health
 # Expected: {"status":"ok","service":"reels-generator-worker","active_threads":0}
 ```
 
-If either returns 5xx, the service is crashing on startup — check
-Cloud Run logs:
-
-```bash
-gcloud run services logs read reels-backend --region=$REGION --limit=50
-gcloud run services logs read reels-worker  --region=$REGION --limit=50
-```
+If either returns 5xx, the service is crashing on startup — check the
+Railway logs (open the service → **Logs** tab).
 
 ---
 
@@ -100,19 +96,16 @@ npm run dev
 7. Open the gallery, click play, click download
 
 If any stage hangs for more than 2 minutes, the worker is probably
-timing out. Check:
-
-```bash
-gcloud run services logs read reels-worker --region=$REGION --limit=100
-```
+hanging. Open Railway → `reels-worker` → **Logs** and look for the
+last log line.
 
 Common errors:
 - **`Connection refused` to Supabase** — the env var on the worker is
-  wrong. Re-deploy with the right `SUPABASE_URL` / `SUPABASE_KEY`.
+  wrong. Update the **Variables** tab on the `reels-worker` service.
 - **`Invalid API key`** on Gemini — the `GEMINI_API_KEY` is wrong.
 - **`Permission denied` on storage upload** — the worker's
   `SUPABASE_KEY` is the **anon** key, not the service role. Fix the env
-  var and redeploy.
+  var and Railway will redeploy.
 
 ---
 
@@ -167,14 +160,14 @@ curl -s "$BACKEND_URL/api/reels/$VIDEO_ID" \
 
 When you're done with the demo:
 
-```bash
-# Stop paying for Cloud Run
-gcloud run services delete reels-backend --region=$REGION --quiet
-gcloud run services delete reels-worker  --region=$REGION --quiet
+- **Railway:** open the project → **Settings** → **Delete Project**. Removes
+  the backend and worker in one click.
+- **Vercel:** open the project → **Settings** → **Delete Project**.
+- **Supabase:** keep the free tier; pause the project from the dashboard
+  if you want to be sure no traffic hits it.
+- **Gemini:** keep the free tier; revoke the API key from
+  <https://aistudio.google.com/app/apikey> if you're worried.
 
-# Or nuke the whole project
-gcloud projects delete $PROJECT_ID
-```
-
-The free tier of Supabase and Gemini can stay — they don't bill you
-unless you exceed the free quota.
+You can also just leave everything running — the $5 Railway credit
+covers a low-traffic demo indefinitely, and the Vercel + Supabase +
+Gemini free tiers don't bill you unless you exceed quotas.

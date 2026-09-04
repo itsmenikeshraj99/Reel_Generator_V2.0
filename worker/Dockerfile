@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.6
 # =============================================================
-# Worker Dockerfile — Cloud Run
+# Worker Dockerfile — Railway / any Docker host
 # Multi-stage with ffmpeg + ffprobe in the runtime image. ~1.2GB.
 #
 # Why apt-get ffmpeg instead of static-linked:
@@ -55,14 +55,14 @@ COPY --chown=app:app worker ./worker
 COPY --chown=app:app assets ./assets
 
 # tini handles PID 1 signal forwarding (SIGTERM → uvicorn graceful shutdown)
-# — Cloud Run's lifecycle depends on this.
+# — Railway's lifecycle depends on this.
 ENTRYPOINT ["/usr/bin/tini", "--"]
 
 USER 65532
 
-# Cloud Run sends SIGTERM and waits up to 10s before SIGKILL. The worker
-# pipeline can take 10 min so we tell uvicorn to be patient; the Cloud Run
-# --timeout flag (set in deploy) is the real deadline.
+# Railway sends SIGTERM and waits up to ~10s before SIGKILL. The worker
+# pipeline can take 10 min so we tell uvicorn to be patient; Railway's
+# `healthcheckTimeout`/`restartPolicyType` is the real deadline.
 ENV PORT=8080
 EXPOSE 8080
 
