@@ -61,19 +61,28 @@ async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -
             for clip in temp_clips:
                 f.write(f"file '{clip}'\n")
 
-        # 3. Stitch. The reframed input is already 1080x1920 9:16, so we just
-        #    concat + re-encode for consistency. The per-clip scale and pad
-        #    is dropped — each clip is already the correct size and the
-        #    concat keeps dimensions as-is.
-        #    (Previously this had `scale=...,pad=...:0:0:black` to guard
-        #    against future reframe size drift, but ffmpeg's runtime
-        #    arithmetic in pad offsets can fail with `Error reinitializing
-        #    filters!` on some inputs — and we don't actually need it
-        #    because reframe.py produces 1080x1920 by construction.)
+        # 3. Stitch. We force the output to 1080x1920 (9:16 portrait) here
+        #    so the raw-cut fallback path (where stitch_input is the
+        #    un-reframed source) still produces a properly-shaped reel.
+        #    When the reframed path is used, the per-clip is already
+        #    1080x1920 and the scale+pad are no-ops; the cost is one
+        #    extra re-encode pass which is cheap (concat copy can't
+        #    combine clips from different filter graphs).
+        #
+        #    IMPORTANT: use literal pad offsets (not `(ow-iw)/2` etc).
+        #    ffmpeg's runtime arithmetic in pad offsets can fail with
+        #    `Error reinitializing filters!` on some inputs. With
+        #    force_original_aspect_ratio=decrease the padded dim is
+        #    always 1080x1080 (square) sitting in a 1080x1920 frame,
+        #    so the y offset is literally 420 = (1920-1080)/2.
         _run_ffmpeg([
             "ffmpeg", "-y",
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
+            "-vf",
+            "scale=1080:1920:force_original_aspect_ratio=decrease,"
+            "pad=1080:1920:0:420:black,"
+            "setsar=1",
             "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
             "-af", "aresample=async=1",  # fix any A/V drift between cuts

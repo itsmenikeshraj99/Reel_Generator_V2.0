@@ -209,23 +209,25 @@ def _scene_subject_center(
 def _scene_crop_w(src_w: int, src_h: int) -> int:
     """Width of the 9:16 source-frame crop, given a source resolution.
     Even-only (libx264 doesn't accept odd widths in some yuv formats)."""
-    target_ratio = TARGET_H / TARGET_W  # 16/9
+    # target_ratio here is h/w of the OUTPUT frame (1920/1080 = 1.778).
+    # We compare the SOURCE aspect to this so we know which axis to keep.
+    target_ratio = TARGET_H / TARGET_W
     if src_w / src_h > target_ratio:
-        # Source wider than 9:16 — crop sides, keep full height.
+        # Source wider than the output aspect — crop sides, keep full height.
         crop_h = src_h - (src_h % 2)
         return int(round(crop_h * target_ratio)) & ~1
-    # Source taller (or equal) — crop top/bottom, keep full width.
+    # Source narrower or equal — keep full width, crop top/bottom downstream.
     return src_w - (src_w % 2)
 
 
 def _scene_crop_h(src_w: int, src_h: int) -> int:
     """Height of the 9:16 source-frame crop, given a source resolution.
     Even-only (libx264 doesn't accept odd heights in some yuv formats)."""
-    target_ratio = TARGET_H / TARGET_W  # 16/9
+    target_ratio = TARGET_H / TARGET_W
     if src_w / src_h > target_ratio:
-        # Source wider than 9:16 — crop sides, keep full height.
+        # Source wider than the output aspect — keep full height, sides cropped.
         return src_h - (src_h % 2)
-    # Source taller (or equal) — crop top/bottom, keep full width.
+    # Source narrower or equal — keep full width, crop top/bottom to 9:16.
     crop_w = src_w - (src_w % 2)
     return int(round(crop_w / target_ratio)) & ~1
 
@@ -305,12 +307,15 @@ def _build_filter(
     has_any_subject = any(s is not None for s in subjects)
     if not has_any_subject:
         # Pure letterbox path — no subjects anywhere. Just fit + pad.
-        # Pad offsets are literal `0:0` (top-left aligned). The runtime
-        # arithmetic `(ow-iw)/2:(oh-ih)/2` can fail with `Error
-        # reinitializing filters!` on some inputs.
+        # Pad offsets are LITERAL `0:420` (top-left aligned) — the
+        # runtime arithmetic `(ow-iw)/2:(oh-ih)/2` can fail with
+        # `Error reinitializing filters!` on some inputs. For a 16:9
+        # source scaled with `force_original_aspect_ratio=decrease`
+        # the scaled frame is 1080x1080, so y offset is literally 420.
+        pad_y = (TARGET_H - TARGET_W) // 2  # 420 for 1080x1920
         vf = (
             f"scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=decrease,"
-            f"pad={TARGET_W}:{TARGET_H}:0:0:black,"
+            f"pad={TARGET_W}:{TARGET_H}:0:{pad_y}:black,"
             f"setsar=1"
         )
         return vf, False
@@ -323,10 +328,14 @@ def _build_filter(
         enable = f"enable='between(t\\,{start:.3f}\\,{end:.3f})'"
         if subj is None:
             # Letterbox this scene — full-width crop + fit + pad.
+            # Pad offsets are LITERAL (not ffmpeg runtime arithmetic) —
+            # runtime `(ow-iw)/2` can fail with `Error reinitializing
+            # filters!` on some inputs.
+            pad_y = (TARGET_H - TARGET_W) // 2  # 420 for 1080x1920
             branch = (
                 f"[0:v]crop={crop_w}:{crop_h}:(iw-cw)/2:0,"
                 f"scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=decrease,"
-                f"pad={TARGET_W}:{TARGET_H}:(ow-iw)/2:(oh-ih)/2:black,"
+                f"pad={TARGET_W}:{TARGET_H}:0:{pad_y}:black,"
                 f"setsar=1,{enable}[v{len(branches)}]"
             )
         else:
@@ -410,16 +419,21 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
                 ch = _scene_crop_h(src_w, src_h)
                 if subj is None:
                     # Letterbox scene — full-frame crop, fit + pad.
-                    # Use literal `0:0` (NOT `(iw-cw)/2:0` arithmetic)
-                    # because ffmpeg's filter expression evaluator can
-                    # reject the runtime-resolved values on some inputs
-                    # (`Error reinitializing filters` / EINVAL).
+                    # Pad offsets are LITERALS (not ffmpeg runtime
+                    # arithmetic) because the filter expression evaluator
+                    # can reject runtime-resolved values on some inputs
+                    # (`Error reinitializing filters` / EINVAL). With
+                    # force_original_aspect_ratio=decrease, the scaled
+                    # frame is always 1080x1080 (square) for a 16:9 source
+                    # — so the vertical pad offset is always literally
+                    # (1920-1080)/2 = 420.
                     x_off = 0
                     y_off = 0
+                    pad_y = (TARGET_H - TARGET_W) // 2  # 420 for 1080x1920
                     scene_vf = (
                         f"crop={cw}:{ch}:{x_off}:{y_off},"
                         f"scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=decrease,"
-                        f"pad={TARGET_W}:{TARGET_H}:(ow-iw)/2:(oh-ih)/2:black,"
+                        f"pad={TARGET_W}:{TARGET_H}:0:{pad_y}:black,"
                         f"setsar=1"
                     )
                 else:
