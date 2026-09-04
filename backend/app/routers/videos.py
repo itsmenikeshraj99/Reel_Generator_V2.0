@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from dotenv import load_dotenv
-from fastapi import APIRouter, Depends, HTTPException, Path, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from google import genai
 from google.genai import types as genai_types
 from pydantic import BaseModel, Field
@@ -46,16 +46,19 @@ async def get_upload_info(
     request: UploadRequest,
     current: CurrentUser = Depends(get_current_user),
 ):
-    """Issue a storage path the client can upload to. Requires a valid Supabase session.
+    """Issue a storage path AND a one-time signed upload URL. Requires a valid Supabase session.
 
     Storage path convention: `<user_id>/<video_id>_<safe_filename>`. The leading
     `<user_id>/` segment is what the Supabase storage RLS policy
     `split_part(name, '/', 1) = auth.uid()` matches on.
+
+    The client PUTs the file bytes directly to `signed_upload_url` with the
+    `upload_token` in the query string (already embedded in the URL by
+    Supabase's signed-upload flow). This unlocks real progress events via
+    XHR — see frontend/src/app/upload/page.tsx for the matching client code.
     """
     video_id = str(uuid.uuid4())
     safe_filename = f"{video_id}_{request.filename.replace(' ', '_')}"
-    # The bucket stores objects at <user_id>/<video_filename> so the storage
-    # RLS policy `auth.uid() = split_part(name, '/', 1)` passes for the owner.
     storage_path = f"{current.id}/{safe_filename}"
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
 
@@ -72,13 +75,120 @@ async def get_upload_info(
         logger.error("DB insert failed for user %s: %s", current.id, exc)
         raise HTTPException(status_code=500, detail="Could not create video record")
 
+    # Issue the signed upload URL AFTER the DB row exists, so we know the
+    # path is real. If this fails, the DB row is orphaned (status PENDING_UPLOAD)
+    # and will be cleaned up by the 24h pg_cron sweep.
+    signed = storage_service.create_signed_upload_url(storage_path)
+    if not signed or not signed.get("signed_url"):
+        logger.error("Failed to create signed upload URL for %s", storage_path)
+        # Clean up the orphan row
+        try:
+            supabase.table("videos").delete().eq("id", video_id).eq(
+                "user_id", current.id
+            ).execute()
+        except Exception:  # noqa: BLE001
+            pass
+        raise HTTPException(status_code=500, detail="Could not generate upload URL")
+
     return {
         "video_id": video_id,
         "storage_path": storage_path,
         "bucket": settings.STORAGE_BUCKET,
-        "message": "Upload details generated. Video will auto-delete in 24 hours.",
+        "signed_upload_url": signed["signed_url"],
+        "upload_token": signed["token"],
+        "message": "Upload URL generated. Video will auto-delete in 24 hours.",
         "expires_at": expires_at,
     }
+
+
+# --- API 1.5: List the caller's videos (Phase 11 — for the dashboard) ---
+@router.get("")
+async def list_my_videos(
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    current: CurrentUser = Depends(get_current_user),
+):
+    """List the caller's videos, newest first. Joins reel count and latest
+    job stage in a single round trip per data source.
+
+    Why not a SQL view: schema churn is avoided and the per-request join is
+    bounded by `limit` (default 50, max 200). For larger datasets we'd
+    revisit — but with a 24h expiry the working set stays small.
+    """
+    try:
+        # 1. Get the user's videos, newest first
+        videos_res = (
+            supabase.table("videos")
+            .select("id, filename, status, created_at, expires_at")
+            .eq("user_id", current.id)
+            .order("created_at", desc=True)
+            .range(offset, offset + limit - 1)
+            .execute()
+        )
+        videos_data = videos_res.data or []
+        if not videos_data:
+            return {"videos": [], "total": 0}
+
+        # 2. Total count (cheap because user_id is indexed)
+        total_res = (
+            supabase.table("videos")
+            .select("id", count="exact")
+            .eq("user_id", current.id)
+            .execute()
+        )
+        total = total_res.count or len(videos_data)
+
+        # 3. Batch-load reel counts for these video_ids
+        video_ids = [v["id"] for v in videos_data]
+        reels_res = (
+            supabase.table("reels")
+            .select("video_id")
+            .in_("video_id", video_ids)
+            .execute()
+        )
+        reel_counts: dict = {}
+        for r in (reels_res.data or []):
+            vid = r.get("video_id")
+            if vid:
+                reel_counts[vid] = reel_counts.get(vid, 0) + 1
+
+        # 4. Batch-load latest job stage per video_id (newest first per video)
+        # Supabase doesn't support DISTINCT ON via the JS SDK, so we fetch
+        # all jobs for these videos and keep the newest by started_at.
+        # Bounded: at most `limit` videos × few jobs each.
+        jobs_res = (
+            supabase.table("jobs")
+            .select("video_id, current_stage, started_at")
+            .in_("video_id", video_ids)
+            .order("started_at", desc=True)
+            .execute()
+        )
+        latest_stage: dict = {}
+        for j in (jobs_res.data or []):
+            vid = j.get("video_id")
+            if vid and vid not in latest_stage:
+                latest_stage[vid] = j.get("current_stage")
+
+        # 5. Stitch it together
+        items = []
+        for v in videos_data:
+            items.append({
+                "id": v["id"],
+                "filename": v.get("filename", ""),
+                "status": v.get("status", "PENDING_UPLOAD"),
+                "created_at": v.get("created_at", ""),
+                "expires_at": v.get("expires_at", ""),
+                "reel_count": reel_counts.get(v["id"], 0),
+                "last_stage": latest_stage.get(v["id"]),
+            })
+
+        return {"videos": items, "total": total}
+
+    except HTTPException:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("list_my_videos crashed for user %s", current.id)
+        raise HTTPException(status_code=500, detail="Could not list videos")
 
 
 # --- API 2: Confirm upload + enqueue pipeline ---

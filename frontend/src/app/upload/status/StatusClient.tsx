@@ -5,6 +5,8 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import AppShell from "@/components/AppShell";
+import { useToast } from "@/components/Toast";
 import { api, type StatusResponse } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
 
@@ -70,6 +72,7 @@ function formatRemaining(seconds: number): string {
 export default function StatusClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { success } = useToast();
   const videoId = searchParams?.get("videoId") ?? null;
 
   const [status, setStatus] = useState<string>("UNKNOWN");
@@ -79,6 +82,8 @@ export default function StatusClient() {
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const startedAtRef = useRef<number>(Date.now());
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Guard so the READY toast fires once per session, not on every poll
+  const readyFiredRef = useRef<boolean>(false);
 
   // Auth gate
   useEffect(() => {
@@ -110,6 +115,10 @@ export default function StatusClient() {
       setError(null);
 
       if (currentStatus === "READY") {
+        if (!readyFiredRef.current) {
+          readyFiredRef.current = true;
+          success("Your reels are ready! 🎬");
+        }
         if (pollRef.current) {
           clearInterval(pollRef.current);
           pollRef.current = null;
@@ -138,7 +147,7 @@ export default function StatusClient() {
       // Don't stop polling on transient errors; just record the last one.
       setError(msg);
     }
-  }, [videoId]);
+  }, [videoId, success]);
 
   useEffect(() => {
     if (!videoId) {
@@ -147,6 +156,7 @@ export default function StatusClient() {
     }
     startedAtRef.current = Date.now();
     setStatus("UNKNOWN");
+    readyFiredRef.current = false;
 
     // First call immediately, then every 2s for snappier UX.
     poll();
@@ -162,25 +172,29 @@ export default function StatusClient() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-6">
-        <Loader2 className="animate-spin text-primary" size={32} />
-        <p className="text-gray-400 text-sm mt-3">Checking session…</p>
-      </div>
+      <AppShell>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
+          <Loader2 className="animate-spin text-primary" size={32} />
+          <p className="text-gray-400 text-sm mt-3">Checking session…</p>
+        </div>
+      </AppShell>
     );
   }
 
   if (!videoId) {
     return (
-      <div className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-6">
-        <AlertCircle size={48} className="text-red-400 mb-4" />
-        <h1 className="text-2xl font-bold">Invalid Video ID</h1>
-        <Link
-          href="/"
-          className="mt-6 bg-white text-black px-6 py-3 rounded-full font-bold"
-        >
-          Go Home
-        </Link>
-      </div>
+      <AppShell>
+        <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
+          <AlertCircle size={48} className="text-red-400 mb-4" />
+          <h1 className="text-2xl font-bold">Invalid Video ID</h1>
+          <Link
+            href="/dashboard"
+            className="mt-6 bg-white text-black px-6 py-3 rounded-full font-bold"
+          >
+            Go to Dashboard
+          </Link>
+        </div>
+      </AppShell>
     );
   }
 
@@ -224,116 +238,126 @@ export default function StatusClient() {
   }
 
   return (
-    <div className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-6">
-      <div className="w-full max-w-lg bg-white/5 border border-white/10 rounded-3xl p-10 backdrop-blur-md shadow-2xl">
-        <div className="text-center mb-8">
-          <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
-            {isReady ? (
-              <CheckCircle size={48} className="text-green-400" />
-            ) : isFailed ? (
-              <AlertCircle size={48} className="text-red-400" />
-            ) : (
-              <Loader2 className="animate-spin text-primary" size={48} />
-            )}
+    <AppShell>
+      <div className="min-h-[80vh] flex flex-col items-center justify-center p-6">
+        <div className="w-full max-w-lg bg-white/5 border border-white/10 rounded-3xl p-10 backdrop-blur-md shadow-2xl">
+          <div className="text-center mb-8">
+            <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
+              {isReady ? (
+                <CheckCircle size={48} className="text-green-400" />
+              ) : isFailed ? (
+                <AlertCircle size={48} className="text-red-400" />
+              ) : (
+                <Loader2 className="animate-spin text-primary" size={48} />
+              )}
+            </div>
+            <h1 className="text-3xl font-bold mb-2">
+              {isReady
+                ? "Reels Ready!"
+                : isFailed
+                  ? "Processing Failed"
+                  : "Processing Your Video"}
+            </h1>
+            <p className="text-gray-400 text-sm">
+              {isReady
+                ? "Your viral clips have been generated"
+                : isFailed
+                  ? "Something went wrong — see error below"
+                  : formatRemaining(remainingSeconds)}
+            </p>
           </div>
-          <h1 className="text-3xl font-bold mb-2">
-            {isReady
-              ? "Reels Ready!"
-              : isFailed
-                ? "Processing Failed"
-                : "Processing Your Video"}
-          </h1>
-          <p className="text-gray-400 text-sm">
-            {isReady
-              ? "Your viral clips have been generated"
-              : isFailed
-                ? "Something went wrong — see error below"
-                : formatRemaining(remainingSeconds)}
-          </p>
-        </div>
 
-        {/* Overall progress bar */}
-        {!isFailed && (
-          <div className="mb-8">
-            <div className="flex justify-between text-xs text-gray-400 mb-1">
+          {/* Overall progress bar */}
+          {!isFailed && (
+            <div className="mb-8">
+              <div className="flex justify-between text-xs text-gray-400 mb-1">
+                <span>
+                  {completedCount} of {STAGE_CONFIG.length} steps complete
+                </span>
+                <span>{progressPct}%</span>
+              </div>
+              <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-700 ease-out ${
+                    isReady
+                      ? "bg-green-500"
+                      : "bg-gradient-to-r from-primary to-secondary"
+                  }`}
+                  style={{ width: `${progressPct}%` }}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Stage list */}
+          <div className="space-y-4 text-left">
+            {STAGE_CONFIG.map((stage) => {
+              const state: StageState = stageStates[stage.key] ?? "pending";
+              return <StageRow key={stage.key} stage={stage} state={state} />;
+            })}
+          </div>
+
+          {/* Error banner (also shown for transient poll errors) */}
+          {error && (isFailed || status === "EXPIRED") && (
+            <div
+              role="alert"
+              className="mt-8 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2"
+            >
+              <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Diagnostics footer */}
+          <div className="mt-6 flex items-center justify-between text-xs text-gray-500">
+            <div className="flex items-center gap-1.5">
+              <RefreshCw size={10} />
               <span>
-                {completedCount} of {STAGE_CONFIG.length} steps complete
+                {lastUpdated
+                  ? `Updated ${lastUpdated.toLocaleTimeString()}`
+                  : "Connecting…"}
               </span>
-              <span>{progressPct}%</span>
             </div>
-            <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-700 ease-out ${
-                  isReady
-                    ? "bg-green-500"
-                    : "bg-gradient-to-r from-primary to-secondary"
-                }`}
-                style={{ width: `${progressPct}%` }}
-              />
+            <span>polls: {pollCount}</span>
+          </div>
+
+          {isReady && (
+            <div className="mt-10 space-y-3">
+              <button
+                onClick={() => router.push(`/upload/gallery?videoId=${videoId}`)}
+                className="w-full bg-gradient-to-r from-primary to-secondary text-white py-4 rounded-full font-bold text-lg hover:opacity-90 transition-all"
+              >
+                View My Reels 🎬
+              </button>
+              <Link
+                href="/dashboard"
+                className="block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-3 rounded-full font-medium text-center text-sm transition-all"
+              >
+                Open Dashboard
+              </Link>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Stage list */}
-        <div className="space-y-4 text-left">
-          {STAGE_CONFIG.map((stage) => {
-            const state: StageState = stageStates[stage.key] ?? "pending";
-            return <StageRow key={stage.key} stage={stage} state={state} />;
-          })}
+          {isFailed && (
+            <Link
+              href="/dashboard"
+              className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
+            >
+              Back to Dashboard
+            </Link>
+          )}
+
+          {status === "EXPIRED" && (
+            <Link
+              href="/dashboard"
+              className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
+            >
+              Back to Dashboard
+            </Link>
+          )}
         </div>
-
-        {/* Error banner (also shown for transient poll errors) */}
-        {error && (isFailed || status === "EXPIRED") && (
-          <div
-            role="alert"
-            className="mt-8 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm flex items-start gap-2"
-          >
-            <AlertCircle size={16} className="mt-0.5 flex-shrink-0" />
-            <span>{error}</span>
-          </div>
-        )}
-
-        {/* Diagnostics footer */}
-        <div className="mt-6 flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-1.5">
-            <RefreshCw size={10} />
-            <span>
-              {lastUpdated
-                ? `Updated ${lastUpdated.toLocaleTimeString()}`
-                : "Connecting…"}
-            </span>
-          </div>
-          <span>polls: {pollCount}</span>
-        </div>
-
-        {isReady && (
-          <button
-            onClick={() => router.push(`/upload/gallery?videoId=${videoId}`)}
-            className="mt-10 w-full bg-gradient-to-r from-primary to-secondary text-white py-4 rounded-full font-bold text-lg hover:opacity-90 transition-all"
-          >
-            View My Reels 🎬
-          </button>
-        )}
-
-        {isFailed && (
-          <Link
-            href="/"
-            className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
-          >
-            Back to Home
-          </Link>
-        )}
-
-        {status === "EXPIRED" && (
-          <Link
-            href="/"
-            className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
-          >
-            Back to Home
-          </Link>
-        )}
       </div>
-    </div>
+    </AppShell>
   );
 }
 

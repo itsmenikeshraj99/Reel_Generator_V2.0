@@ -101,5 +101,36 @@ class StorageService:
             logger.warning("create_signed_url failed for %s: %s", path, exc)
             return None
 
+    # --- Signed Upload URL (Phase 11 — for progress bar in the UI) ---
+    def create_signed_upload_url(self, path: str) -> Optional[dict]:
+        """Return a one-time signed upload URL + token, or None on failure.
+
+        The client PUTs the file bytes directly to `signed_url` with the token
+        in the query string. The response shape is:
+            {"signed_url": str, "token": str, "path": str}
+
+        Why we need this: `supabase.storage.from_(b).upload()` does NOT expose
+        progress events, so we can't show a progress bar for chunky uploads.
+        PUTting to a signed URL via XHR gives us real `onprogress` callbacks.
+        See `frontend/src/app/upload/page.tsx` for the matching client code.
+        """
+        try:
+            res = supabase.storage.from_(self.bucket).create_signed_upload_url(path)
+            # The SDK returns either a dict or a typed object depending on version
+            if isinstance(res, dict):
+                return {
+                    "signed_url": res.get("signedUrl") or res.get("signed_url", ""),
+                    "token": res.get("token", ""),
+                    "path": res.get("path", path),
+                }
+            return {
+                "signed_url": getattr(res, "signed_url", "") or getattr(res, "signedURL", ""),
+                "token": getattr(res, "token", ""),
+                "path": getattr(res, "path", path),
+            }
+        except StorageException as exc:
+            logger.warning("create_signed_upload_url failed for %s: %s", path, exc)
+            return None
+
 
 storage_service = StorageService()

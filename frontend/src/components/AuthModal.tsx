@@ -48,7 +48,11 @@ const AuthModal = ({
         const { error: signUpError } = await supabase.auth.signUp({
           email,
           password,
-          options: { emailRedirectTo: window.location.origin },
+          // After email verification, land on the dashboard. The /auth/callback
+          // route bounces to "next" if present; without it we fall back to /.
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=/dashboard`,
+          },
         });
         if (signUpError) throw signUpError;
         setInfo("Verification email sent! Please check your inbox.");
