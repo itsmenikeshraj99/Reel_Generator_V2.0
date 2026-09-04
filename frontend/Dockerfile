@@ -36,7 +36,7 @@ WORKDIR /app
 # Copy only what we need to run
 COPY --from=builder /app/.next/standalone ./
 COPY --from=builder /app/.next/static ./.next/static
-COPY --from=builder /app/public ./public 2>/dev/null || true
+COPY --from=builder /app/public ./public
 
 # Run as non-root
 RUN addgroup -g 65532 app && adduser -u 65532 -G app -D -s /sbin/nologin app \

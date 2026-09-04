@@ -66,4 +66,4 @@ USER 65532
 ENV PORT=8080
 EXPOSE 8080
 
-CMD ["sh", "-c", "exec /opt/venv/bin/python -m worker.worker.main"]
+CMD ["sh", "-c", "exec /opt/venv/bin/python -m worker.main"]
