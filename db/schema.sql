@@ -1,7 +1,11 @@
 -- =============================================================
--- Reels Generator — Supabase schema
+-- Reels Generator — Supabase schema (BASE)
 -- Apply this in Supabase Dashboard -> SQL Editor
 -- Safe to re-run (idempotent)
+--
+-- After applying this, also apply the migrations in
+-- `db/migrations/NNN_*.sql` in numerical order. They layer on
+-- production-readiness tighten-ups (CHECK constraints, triggers).
 -- =============================================================
 
 -- Required for gen_random_uuid()
@@ -158,3 +162,73 @@ create policy "Owner delete reels-videos"
     bucket_id = 'reels-videos'
     and auth.uid()::text = split_part(name, '/', 1)
   );
+
+-- =============================================================
+-- CHECK constraints on status / stage columns
+--
+-- NOTE: This block is also present in db/migrations/002_*.sql.
+-- Keep them in sync. The migration is the source of truth for
+-- existing deployments; this inline block is here for fresh
+-- installs to get the full schema in one paste.
+-- =============================================================
+
+-- videos.status: the upload lifecycle from the API's POV
+alter table videos drop constraint if exists videos_status_check;
+alter table videos add  constraint videos_status_check
+  check (status in ('PENDING_UPLOAD', 'UPLOADED', 'PROCESSING', 'READY', 'FAILED'));
+
+-- jobs.status: pipeline-level outcome
+alter table jobs drop constraint if exists jobs_status_check;
+alter table jobs add  constraint jobs_status_check
+  check (status in ('PENDING', 'RUNNING', 'READY', 'FAILED', 'PERMANENTLY_FAILED'));
+
+-- jobs.current_stage: the state machine (PENDING is the initial
+-- "queued, not started" state; the rest are real pipeline stages)
+alter table jobs drop constraint if exists jobs_current_stage_check;
+alter table jobs add  constraint jobs_current_stage_check
+  check (current_stage in (
+    'PENDING',
+    'VALIDATING',
+    'TRANSCRIBING_PLANNING',
+    'REVIEWING',
+    'RENDERING',
+    'READY'
+  ));
+
+-- edit_plans.status: the candidate lifecycle
+alter table edit_plans drop constraint if exists edit_plans_status_check;
+alter table edit_plans add  constraint edit_plans_status_check
+  check (status in ('pending_review', 'accepted', 'rejected'));
+
+-- =============================================================
+-- Auto-update `updated_at` on `jobs` so it never goes stale
+-- =============================================================
+create or replace function set_updated_at() returns trigger as $$
+begin
+  new.updated_at = current_timestamp;
+  return new;
+end;
+$$ language plpgsql;
+
+drop trigger if exists trg_jobs_updated_at on jobs;
+create trigger trg_jobs_updated_at
+  before update on jobs
+  for each row execute function set_updated_at();
+
+-- =============================================================
+-- Updated-at on videos (and reels) too — useful for "last activity"
+-- queries in the future
+-- =============================================================
+drop trigger if exists trg_videos_updated_at on videos;
+-- videos doesn't have an updated_at column, so add it
+alter table videos add column if not exists updated_at timestamp with time zone default current_timestamp;
+create trigger trg_videos_updated_at
+  before update on videos
+  for each row execute function set_updated_at();
+
+drop trigger if exists trg_reels_updated_at on reels;
+alter table reels add column if not exists updated_at timestamp with time zone default current_timestamp;
+create trigger trg_reels_updated_at
+  before update on reels
+  for each row execute function set_updated_at();
+
