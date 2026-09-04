@@ -449,11 +449,13 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
                 dur = max(0.04, end - start)
                 clip_cmd = [
                     "ffmpeg", "-y",
+                    "-threads", "1",
+                    "-filter_threads", "1",
                     "-ss", f"{start:.3f}",
                     "-i", video_path,
                     "-t", f"{dur:.3f}",
                     "-vf", scene_vf,
-                    "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+                    "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
                     "-c:a", "aac", "-b:a", "192k",
                     "-movflags", "+faststart",
                     clip_path,
@@ -528,9 +530,11 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
         # Simple chain (no subjects detected — single letterbox path).
         cmd = [
             "ffmpeg", "-y",
+            "-threads", "1",
+            "-filter_threads", "1",
             "-i", video_path,
             "-vf", vf,
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
             "-movflags", "+faststart",
             "-shortest",

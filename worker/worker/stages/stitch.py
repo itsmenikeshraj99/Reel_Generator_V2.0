@@ -43,14 +43,20 @@ async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -
         concat_list_path = f"{output_path}.txt"
 
         # 1. Cut each segment with re-encoding (keyframe-accurate)
+        #    Memory note: -threads 1 + ultrafast preset keeps peak RSS under
+        #    ~700MB so two parallel ffmpegs (refreme+stitch+caption pipeline)
+        #    stay within Railway's 2GB worker limit. The trade-off is ~2x
+        #    slower encoding, which is fine for a 30-90s reel.
         for i, seg in enumerate(segments):
             clip_path = f"{output_path}_part_{i}.mp4"
             _run_ffmpeg([
                 "ffmpeg", "-y",
+                "-threads", "1",
+                "-filter_threads", "1",
                 "-ss", str(seg["start_time"]),
                 "-to", str(seg["end_time"]),
                 "-i", video_path,
-                "-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 clip_path,
             ])
@@ -77,13 +83,15 @@ async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -
         #    so the y offset is literally 420 = (1920-1080)/2.
         _run_ffmpeg([
             "ffmpeg", "-y",
+            "-threads", "1",
+            "-filter_threads", "1",
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
             "-vf",
             "scale=1080:1920:force_original_aspect_ratio=decrease,"
             "pad=1080:1920:0:420:black,"
             "setsar=1",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
             "-af", "aresample=async=1",  # fix any A/V drift between cuts
             "-movflags", "+faststart",

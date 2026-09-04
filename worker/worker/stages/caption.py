@@ -193,11 +193,15 @@ async def burn_captions(video_id: str, video_path: str, output_path: str) -> boo
 
         # Use the `ass` filter to burn in. Use libx264 again to keep the
         # file web-playable, and `+faststart` for streaming.
+        # Memory: single-thread + ultrafast keeps caption stage under
+        # ~700MB so we don't OOM on Railway's 2GB worker after reframe.
         cmd = [
             "ffmpeg", "-y",
+            "-threads", "1",
+            "-filter_threads", "1",
             "-i", video_path,
             "-vf", f"ass='{safe_ass}'",
-            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "copy",  # never re-encode audio here
             "-movflags", "+faststart",
             output_path,

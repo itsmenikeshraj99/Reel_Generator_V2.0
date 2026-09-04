@@ -446,6 +446,18 @@ class Pipeline:
             if not await stitch_and_caption(self.video_id, stitch_input, output_path):
                 return False
 
+            # Free the reframed temp file before the caption step — it's
+            # 50-150MB on disk and no longer referenced. Keeping it
+            # around just increases the chance that /tmp fills up on
+            # long-running workers or that we OOM at peak. The outer
+            # `finally` block would clean it up anyway, but doing it
+            # here shaves the peak memory footprint during caption.
+            if reframe_ok and stitch_input == reframed_path and os.path.exists(reframed_path):
+                try:
+                    os.remove(reframed_path)
+                except OSError:
+                    pass
+
             # 3. Caption overlay: best-effort. On failure we still ship the
             #    caption-stripped video rather than nothing.
             final_path = output_path
