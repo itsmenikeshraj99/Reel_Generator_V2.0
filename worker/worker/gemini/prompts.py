@@ -9,7 +9,13 @@ Analyze the provided video and create a high-impact edit plan for Instagram Reel
    have non-overlapping, sequential timestamps. This is REQUIRED — captions are burned
    onto the final reel.
 3. Identify 3 to 5 separate candidates for the final reel.
-4. For each candidate, select 3-5 non-continuous segments that, when stitched together, tell a compelling story or highlight viral moments.
+4. For each candidate, select 2-3 non-continuous segments that, when stitched together, tell a compelling story or highlight viral moments.
+   DURATION RULES — these are HARD constraints, not suggestions:
+   - Each segment MUST be at least 15 seconds long (end - start >= 15).
+   - Each segment MUST be at most 30 seconds long (end - start <= 30).
+   - The TOTAL stitched duration of all segments in a candidate MUST be at least 20 seconds.
+   - The TOTAL stitched duration MUST NOT exceed 35 seconds.
+   - Pick fewer-but-longer segments over more-but-shorter ones.
 5. For every segment, provide the exact start and end timestamps in seconds (end > start, both >= 0).
 6. Assign a hook_score (0-1) based on how effectively the first segment grabs attention.
 7. Assign an overall_score (0-1) based on the viral potential of the whole candidate.

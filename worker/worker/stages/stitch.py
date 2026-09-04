@@ -40,6 +40,23 @@ async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -
             logger.error("Accepted plan %s has no segments", plan.get("id"))
             return False
 
+        # Safety net (Phase 8): the prompt and Pydantic schema both
+        # enforce a 20-35s total stitched duration, but a buggy older
+        # edit_plan row that was reviewed + accepted before this
+        # constraint existed could still be in the DB. Surface a
+        # clear error instead of silently shipping a 5s reel.
+        total_duration = sum(
+            float(seg["end_time"]) - float(seg["start_time"])
+            for seg in segments
+        )
+        if total_duration < 20.0:
+            logger.error(
+                "Accepted plan %s has total duration %.1fs (< 20s minimum); "
+                "rejecting before stitch",
+                plan.get("id"), total_duration,
+            )
+            return False
+
         concat_list_path = f"{output_path}.txt"
 
         # 1. Cut each segment with re-encoding (keyframe-accurate)
