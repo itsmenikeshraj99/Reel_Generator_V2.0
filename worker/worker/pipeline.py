@@ -28,8 +28,14 @@ from worker.services.supabase import supabase_client
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("pipeline")
 
-# Ordered stage list — used to detect "skip ahead" scenarios
-_STAGES = ["VALIDATING", "TRANSCRIBING_PLANNING", "REVIEWING", "RENDERING", "READY"]
+# Ordered stage list — used to detect "skip ahead" scenarios.
+# PENDING is the "no work yet" placeholder written by the initial upsert
+# when there's no prior job row. Listing it at index -1 means the
+# "already past" check in `transition()` correctly allows any real stage
+# to advance from PENDING, but also makes the check on a row that's been
+# regressed to PENDING (e.g. by a buggy older version of the upsert)
+# fire correctly.
+_STAGES = ["PENDING", "VALIDATING", "TRANSCRIBING_PLANNING", "REVIEWING", "RENDERING", "READY"]
 
 # Phase 7: max attempts per stage. Counts the *initial* run plus retries.
 # So 3 == 1 initial + 2 retries.
@@ -92,9 +98,12 @@ class Pipeline:
 
                 # Resume from a previously-failed/in-progress stage. The
                 # stage list lets us pick the right index for skip-ahead.
+                # PENDING is excluded — it just means "no work started yet",
+                # so a resume from PENDING would be a no-op.
+                _RESUMABLE = {"VALIDATING", "TRANSCRIBING_PLANNING", "REVIEWING", "RENDERING"}
                 if (
                     prior_stage
-                    and prior_stage in _STAGES
+                    and prior_stage in _RESUMABLE
                     and prior_status in ("FAILED", "RUNNING")
                 ):
                     self._resume_from = prior_stage
@@ -110,17 +119,26 @@ class Pipeline:
                 # each subsequent failure. Wrapped in try/except so a
                 # missing `retry_count` column on a pre-migration DB
                 # doesn't kill the whole pipeline.
+                #
+                # Phase 7 fix: when resuming from a previously-in-progress
+                # stage, do NOT regress `current_stage` back to PENDING —
+                # the status page polls every 2s and would briefly see
+                # PENDING before `transition("VALIDATING")` fires, which
+                # makes the UI rewind from "Rendering Final Reels" back to
+                # "Processing Your Video". Hold the prior stage until the
+                # first real `transition()` call advances it forward.
+                resume_stage = self._resume_from or "PENDING"
                 try:
                     supabase_client.table("jobs").upsert({
                         "video_id": self.video_id,
-                        "current_stage": "PENDING",
+                        "current_stage": resume_stage,
                         "status": "RUNNING",
                         "last_error": None,
                     }, on_conflict="video_id").execute()
                 except Exception:
                     supabase_client.table("jobs").upsert({
                         "video_id": self.video_id,
-                        "current_stage": "PENDING",
+                        "current_stage": resume_stage,
                         "status": "RUNNING",
                     }, on_conflict="video_id").execute()
             except Exception as exc:  # noqa: BLE001
