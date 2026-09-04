@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build outputs
+.next/
+out/
+build/
+dist/
+
+# Test outputs
+coverage/
+
+# Local env files (NEVER bake secrets into an image)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Misc
+.DS_Store
+Thumbs.db
+*.pem
+*.tsbuildinfo
+next-env.d.ts
+
+# Vercel
+.vercel
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Next.js dev-agent guidance (auto-generated, not for source control)
+AGENTS.md
+CLAUDE.md
+
+# Docker
+Dockerfile
+.dockerignore

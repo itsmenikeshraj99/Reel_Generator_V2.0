@@ -1,0 +1,41 @@
+# Virtual environment
+venv/
+.venv/
+
+# Env files (NEVER bake secrets into an image)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+
+# Tests (built into the image but not run in production)
+tests/
+.pytest_cache/
+.coverage
+
+# Logs
+*.log
+logs/
+
+# Local dev scripts
+check_db.py
+check_jobs.py
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker / build artifacts
+Dockerfile
+.dockerignore

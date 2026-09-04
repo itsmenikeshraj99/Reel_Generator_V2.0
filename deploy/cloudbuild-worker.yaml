@@ -1,0 +1,47 @@
+# Cloud Build config for the worker. Mirror of cloudbuild-backend.yaml
+# but pointing at the worker/ context.
+#
+# Run from the repo root:
+#   gcloud builds submit --config=deploy/cloudbuild-worker.yaml \
+#     --substitutions=_REGION=us-central1
+#
+# Worker image is ~1.2GB (ffmpeg + opencv), so this takes 4-6 min
+# on the default E2_HIGHCPU_8 machine.
+
+substitutions:
+  _REGION: us-central1
+  _REPO: reels-images
+  _SERVICE: worker
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_8
+  # The worker image is large. Give it disk space.
+  diskSizeGb: 100
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    id: build
+    dir: worker
+    args:
+      - build
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+      - --tag=${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+      - .
+
+  - name: gcr.io/cloud-builders/docker
+    id: push-sha
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+  - name: gcr.io/cloud-builders/docker
+    id: push-latest
+    args:
+      - push
+      - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+
+images:
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:$SHORT_SHA
+  - ${_REGION}-docker.pkg.dev/$PROJECT_ID/${_REPO}/${_SERVICE}:latest
+
+timeout: 1200s   # ffmpeg + opencv wheels are big; 20-min ceiling

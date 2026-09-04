@@ -51,6 +51,10 @@ const securityHeaders = [
 ];
 
 const nextConfig = {
+  // `standalone` output bundles only the runtime deps needed to run the
+  // production server, so the Docker image stays small. Vercel ignores
+  // this and uses its own build pipeline.
+  output: process.env.BUILD_STANDALONE === '1' ? 'standalone' : undefined,
   reactStrictMode: true,
   images: {
     remotePatterns: [

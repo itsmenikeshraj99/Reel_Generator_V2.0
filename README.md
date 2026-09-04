@@ -336,6 +336,42 @@ End-to-end:
 | Frontend build fails on `AlertCircle not defined`      | Older import — make sure you have the latest `frontend/src/app/upload/gallery/page.tsx` |
 | `transcripts.words` is null, captions skipped          | Expected for some videos — captions require overlapping word timings; warning, not error |
 
+## ☁️ Deploy
+
+The project ships with everything needed to deploy the backend and worker to
+[Google Cloud Run](https://cloud.google.com/run) and the frontend to
+[Vercel](https://vercel.com) or Cloud Run.
+
+**Cost: ~$5/mo** for a demo / portfolio deployment (1–5 videos/day).
+
+```bash
+# 1. Read the step-by-step guide
+open deploy/SETUP.md
+
+# 2. Set up env vars
+cp deploy/env.prod.example deploy/env.prod   # private, not committed
+$EDITOR deploy/env.prod
+set -a; source deploy/env.prod; set +a
+
+# 3. Deploy
+./deploy/deploy-backend.sh
+./deploy/deploy-worker.sh
+# (then update WORKER_URL on the backend with the worker's URL)
+
+# 4. Verify
+open deploy/SMOKE_TEST.md
+```
+
+| File                                          | What                                                |
+| --------------------------------------------- | --------------------------------------------------- |
+| [`deploy/SETUP.md`](deploy/SETUP.md)          | From zero GCP project → first deploy                |
+| [`deploy/SMOKE_TEST.md`](deploy/SMOKE_TEST.md) | End-to-end test of the deployed stack               |
+| [`deploy/deploy-backend.sh`](deploy/deploy-backend.sh) | One-shot backend build + deploy              |
+| [`deploy/deploy-worker.sh`](deploy/deploy-worker.sh)   | One-shot worker build + deploy                |
+| [`vercel.json`](vercel.json)                  | Vercel config (auto-deploys from `main`)            |
+
+
+
 ## 🗺️ Roadmap
 
 - [x] Auth (Supabase + JWT verification)
@@ -344,7 +380,9 @@ End-to-end:
 - [x] Scene-aware reframing
 - [x] Caption overlay
 - [x] Public gallery with download
-- [ ] Cloud Run deploy + Cloud Tasks queue
+- [x] Cloud Run deploy (backend + worker) + Vercel/Cloud Run frontend
+- [ ] Cloud Tasks queue (Phase 11 — production-grade queueing)
+- [ ] Secret Manager + custom domain (Phase 11 hardening)
 - [ ] Background music / B-roll suggestions
 - [ ] Multi-language caption translation
 - [ ] Stripe billing for paid tiers

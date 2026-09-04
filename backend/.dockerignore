@@ -1,0 +1,40 @@
+# Virtual environment
+venv/
+.venv/
+
+# Env files (NEVER bake secrets into an image)
+.env
+.env.local
+.env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+
+# Tests
+tests/
+.pytest_cache/
+.coverage
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Docker / build artifacts
+Dockerfile
+.dockerignore
+
+# This file
+.dockerignore
