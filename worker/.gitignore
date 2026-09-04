@@ -1,0 +1,36 @@
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+
+# Env files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg
+*.egg-info/
+
+# FFmpeg temp files (just in case)
+*.mp4
+*.mp4.txt
+!tests/fixtures/*.mp4
+
+# Logs
+*.log
+logs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+Thumbs.db

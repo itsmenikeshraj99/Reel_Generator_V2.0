@@ -1,0 +1,35 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python (root-level venv, if any)
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Node (root-level)
+node_modules/
+
+# Misc
+*.log
+*.tmp
+*.bak
+
+# Claude Code (local-only config)
+.claude/
+
+# Next.js dev-agent guidance (auto-generated, not for source control)
+CLAUDE.md
+AGENTS.md
+
+# Junk that auto-mode accidentally created
+worker_logs.txt
+C:Usersitsme.claudeplans*
+

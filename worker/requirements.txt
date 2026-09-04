@@ -1,0 +1,14 @@
+fastapi==0.115.5
+uvicorn[standard]==0.32.0
+python-dotenv==1.0.1
+supabase==2.10.0
+google-genai==1.0.0
+pydantic==2.9.2
+pydantic-settings==2.6.1
+opencv-contrib-python==5.0.0.93
+tenacity==9.0.0
+# Phase 5: scene detection. Subject detection uses bundled OpenCV
+# Haar cascade; MediaPipe is intentionally not a dep because its
+# `solutions` API was removed in mediapipe>=1.0 and the new
+# `tasks.vision` API requires shipping a .tflite model file.
+scenedetect==0.7.1
