@@ -31,13 +31,16 @@ A three-tier application that turns long-form video into short, shareable reels 
 ## ✨ Features
 
 - **🔐 Real auth** — Supabase email + OAuth (Google) login, JWT-verified on every backend call
-- **📤 Direct uploads** — file goes to Supabase Storage via signed URLs (no backend bandwidth)
+- **📤 Direct uploads with progress** — XHR PUT to a Supabase signed upload URL (no backend bandwidth) with a live progress bar in the UI
 - **🤖 AI edit planning** — Gemini proposes 3–5 candidate highlight reels per video
 - **👀 AI review** — Gemini critiques each candidate, the planner re-rolls with feedback (up to N attempts), with a graceful fallback so the user always gets a reel
-- **🎬 Scene-aware reframing** — PySceneDetect splits the video into shots; OpenCV finds the subject; each shot gets a custom 1080×1920 crop (no awkward mid-shot jumps)
+- **🎬 Scene-aware reframing** — PySceneDetect splits the video into shots; OpenCV finds the subject; each shot gets a custom 720×1280 crop (no awkward mid-shot jumps; resolution is capped to fit Railway's 1GB worker)
 - **✂️ Lossless stitching** — re-encoded cuts + concat demuxer + `aresample=async=1` to fix any A/V drift
 - **📝 Auto captions** — word-level timing from Gemini transcript → burned-in captions on the final reel
-- **📥 Download** — public URL on Supabase Storage; click-to-download in the gallery
+- **📥 Download + share** — public URL on Supabase Storage; click-to-download or share to Twitter / LinkedIn / WhatsApp from the gallery
+- **🗂 Dashboard** — every uploaded video in a grid with status badges, reel counts, and an "auto-delete in Xh" countdown
+- **📱 Mobile-first UI** — top nav + slide-in drawer under 768px, responsive grids, gradient + Play-icon video previews that load on hover
+- **🔔 Toast notifications** — non-blocking feedback for "Reels ready!", "Session cleared", share, etc.
 - **🛡️ Defense in depth** — CORS allow-list, CSP headers, X-Frame-Options, RLS on the user-facing path, service-role keys scoped to the worker
 
 ## 🏗️ Architecture
@@ -100,9 +103,11 @@ taken offline for maintenance without ever touching the user-facing API.
 │   └── requirements.txt
 ├── frontend/           Next.js 16 (App Router) + Tailwind + Supabase SSR
 │   ├── src/
-│   │   ├── app/        auth, upload, status, gallery
-│   │   ├── components/ AuthModal, Toast
-│   │   └── lib/        api.ts (typed client), supabase.ts
+│   │   ├── app/        auth, upload, upload/status, upload/gallery, dashboard
+│   │   ├── components/ AppShell, AuthModal, Toast, Skeleton, EmptyState,
+│   │   │              ProgressBar, UploadDropzone, ReelCard, VideoPreview,
+│   │   │              ShareMenu
+│   │   └── lib/        api.ts (typed client), supabase.ts, cn.ts
 │   ├── next.config.js  CSP / X-Frame-Options / referrer-policy
 │   └── package.json
 ├── db/
@@ -199,6 +204,10 @@ Then:
 
 ```bash
 TOKEN="paste-token-here"
+
+# 0) List the caller's videos (for the dashboard)
+curl http://localhost:8000/api/videos \
+  -H "Authorization: Bearer $TOKEN"
 
 # 1) Get a signed upload URL
 curl -X POST http://localhost:8000/api/videos/upload-url \
@@ -371,9 +380,10 @@ open deploy/SETUP.md
 - [x] Caption overlay
 - [x] Public gallery with download
 - [x] Railway deploy (backend + worker) + Vercel (frontend) — no card required
-- [ ] Google Cloud Run deploy (Phase 11 — switch back when you have a Visa/Mastercard)
-- [ ] Cloud Tasks queue (Phase 11 — production-grade queueing)
-- [ ] Secret Manager + custom domain (Phase 11 hardening)
+- [x] **UI/UX overhaul** — AppShell, dashboard, progress bar, share menu, toasts, mobile drawer (Phase 11)
+- [ ] Google Cloud Run deploy — switch back when you have a Visa/Mastercard
+- [ ] Cloud Tasks queue (production-grade queueing)
+- [ ] Secret Manager + custom domain (production hardening)
 - [ ] Background music / B-roll suggestions
 - [ ] Multi-language caption translation
 - [ ] Stripe billing for paid tiers
@@ -390,6 +400,63 @@ PRs welcome. Please:
 ## 📄 License
 
 MIT — see [`LICENSE`](LICENSE).
+
+## 📝 Changelog
+
+### Phase 11 — UI/UX Overhaul (2026-09-05)
+
+The user-facing rebuild. No backend semantics changed (one new endpoint
+plus a `signed_upload_url` on the existing `POST /api/videos/upload-url`).
+
+**Backend**
+- New: `GET /api/videos?limit&offset` — list the caller's videos with reel
+  counts and latest job stage for the dashboard.
+- `POST /api/videos/upload-url` now returns `signed_upload_url` +
+  `upload_token` so the client can `XHR.PUT` the file with real progress
+  events.
+- New Pydantic models: `VideoListItem`, `VideoListResponse`,
+  `SignedUploadInfo`.
+
+**Frontend — new components**
+- `AppShell` — top nav (sticky, backdrop-blur) + mobile drawer
+  (`<768px`); auth via `supabase.auth.onAuthStateChange`.
+- `Toast` + `useToast` — 3-variant notification system (success /
+  error / info), 4s/6s TTL, z-100, manual close.
+- `Skeleton` — text/rect/circle placeholders for loading states.
+- `EmptyState` — icon + body + CTA.
+- `UploadDropzone` — 4-state drag-drop (idle / drag-over / selected /
+  error).
+- `ProgressBar` — value (0-100) + indeterminate modes; accessible.
+- `ReelCard` + `VideoPreview` — extracted from the gallery: 9:16 frame
+  with gradient + Play icon, video cross-fades in on hover.
+- `ShareMenu` — popover with Copy Link / Twitter / LinkedIn / WhatsApp;
+  uses native `<details>` so no outside-click handler needed.
+
+**Frontend — new pages**
+- `/dashboard` — list the user's videos with status badges, reel counts,
+  and "Xh left" countdowns. Server-component shell + client
+  `DashboardClient` + error boundary.
+
+**Frontend — refactored pages**
+- `/` split into landing (logged-out) / bounce-to-dashboard (logged-in).
+- `/upload` wrapped in `AppShell`; switches to XHR PUT upload with a
+  live progress bar.
+- `/upload/status` wrapped in `AppShell`; fires a toast on `READY`,
+  adds an "Open Dashboard" link.
+- `/upload/gallery` wrapped in `AppShell`; uses `ReelCard` + `ShareMenu`;
+  delete-confirm modal z-index lowered from 50 → 40 so toasts sit above
+  it.
+- `not-found` page wrapped in `AppShell` with dual "Go home" /
+  "Browse dashboard" CTAs.
+- `AuthModal` redirects new sign-ups to `/auth/callback?next=/dashboard`.
+
+**Other**
+- Tailwind keyframes: `toast-in`, `pulse-stage`, `gradient-shift`.
+- Zero new dependencies; zero schema migrations; zero new env vars.
+
+### Earlier phases
+See the [commit history](https://github.com/itsmenikeshraj99/Reel_Generator_V2.0/commits/main)
+for the full changelog of the auth + pipeline + deploy work.
 
 ---
 
