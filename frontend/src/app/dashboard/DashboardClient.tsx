@@ -32,7 +32,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, RefreshCw, Upload, AlertCircle, Sparkles, Eye } from "lucide-react";
+import { Loader2, RefreshCw, Upload, AlertCircle, Film } from "lucide-react";
 
 import AppShell from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -79,7 +79,7 @@ function formatCreatedAt(iso: string): string {
 
 export default function DashboardClient() {
   const router = useRouter();
-  const { success: toastSuccess, error: toastError } = useToast();
+  const { error: toastError } = useToast();
 
   const [authChecked, setAuthChecked] = useState(false);
   const [isAuthed, setIsAuthed] = useState(false);
@@ -87,8 +87,6 @@ export default function DashboardClient() {
   const [total, setTotal] = useState(0);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  // Per-video generation state. null = idle, true = generating.
-  const [generating, setGenerating] = useState<Record<string, boolean>>({});
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -100,8 +98,11 @@ export default function DashboardClient() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load videos";
       setFetchError(msg);
-      // 401 from the backend = session expired; bounce to landing
+      // 401 from the backend = session expired; bounce to landing.
+      // Phase 12: also clear videos so the error state (not the
+      // skeleton) is visible during the redirect.
       if (/401|unauth/i.test(msg)) {
+        setVideos([]);
         router.replace("/?redirect=/dashboard");
         return;
       }
@@ -135,31 +136,12 @@ export default function DashboardClient() {
     load();
   }, [isAuthed, load]);
 
-  const handleGenerate = useCallback(
-    async (videoId: string) => {
-      setGenerating((g) => ({ ...g, [videoId]: true }));
-      try {
-        await api.processVideo(videoId);
-        toastSuccess("Generating new reels! Redirecting…");
-        setTimeout(() => {
-          router.push(`/upload/status?videoId=${videoId}`);
-        }, 700);
-      } catch (err) {
-        const msg =
-          err instanceof Error ? err.message : "Could not start generation";
-        toastError(msg);
-        setGenerating((g) => ({ ...g, [videoId]: false }));
-      }
-    },
-    [router, toastSuccess, toastError],
-  );
-
   if (!authChecked) {
     return (
       <AppShell>
         <div className="min-h-[60vh] flex flex-col items-center justify-center gap-3">
           <Loader2 className="animate-spin text-primary" size={32} />
-          <p className="text-gray-400 text-sm">Checking session…</p>
+          <p className="text-text-muted text-sm">Checking session…</p>
         </div>
       </AppShell>
     );
@@ -169,12 +151,12 @@ export default function DashboardClient() {
     <AppShell>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8">
         {/* --- Section 1: Upload CTA --- */}
-        <div className="mb-8 rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-white/10 p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+        <div className="mb-8 rounded-2xl bg-gradient-to-br from-primary/20 via-secondary/10 to-transparent border border-border p-6 sm:p-8 flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
           <div className="flex-1">
             <h1 className="text-2xl sm:text-3xl font-bold mb-1">
-              Your Reels
+              Your Library
             </h1>
-            <p className="text-sm text-gray-400">
+            <p className="text-sm text-text-muted">
               {videos && videos.length > 0
                 ? `${total} video${total === 1 ? "" : "s"} • auto-deletes after 24h`
                 : "Upload a video to get started"}
@@ -184,7 +166,7 @@ export default function DashboardClient() {
             <button
               onClick={load}
               disabled={loading}
-              className="p-2.5 rounded-full bg-white/5 hover:bg-white/10 text-gray-300 transition-colors disabled:opacity-50"
+              className="p-2.5 rounded-full bg-black/5 hover:bg-black/10 text-text-muted transition-colors disabled:opacity-50"
               aria-label="Refresh"
               title="Refresh"
             >
@@ -211,11 +193,11 @@ export default function DashboardClient() {
           // Hard error
           <div className="flex flex-col items-center justify-center text-center py-16 px-6 rounded-2xl border border-dashed border-red-500/20 bg-red-500/[0.03]">
             <AlertCircle size={40} className="text-red-400 mb-3" />
-            <h3 className="text-lg font-semibold text-white mb-1">Couldn't load videos</h3>
-            <p className="text-sm text-gray-400 mb-5">{fetchError}</p>
+            <h3 className="text-lg font-semibold text-text mb-1">Couldn't load videos</h3>
+            <p className="text-sm text-text-muted mb-5">{fetchError}</p>
             <button
               onClick={load}
-              className="text-sm bg-white/5 hover:bg-white/10 px-4 py-2 rounded-full"
+              className="text-sm bg-black/5 hover:bg-black/10 px-4 py-2 rounded-full"
             >
               Try again
             </button>
@@ -233,12 +215,7 @@ export default function DashboardClient() {
           // Grid
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {videos.map((v) => (
-              <DashboardCard
-                key={v.id}
-                video={v}
-                isGenerating={!!generating[v.id]}
-                onGenerate={() => handleGenerate(v.id)}
-              />
+              <DashboardCard key={v.id} video={v} />
             ))}
           </div>
         )}
@@ -249,21 +226,19 @@ export default function DashboardClient() {
 
 interface DashboardCardProps {
   video: VideoListItem;
-  isGenerating: boolean;
-  onGenerate: () => void;
 }
 
-function DashboardCard({ video, isGenerating, onGenerate }: DashboardCardProps) {
+function DashboardCard({ video }: DashboardCardProps) {
   const badge = STATUS_BADGE[video.status] ?? {
     label: video.status,
-    classes: "bg-white/5 text-gray-300 border-white/10",
+    classes: "bg-black/5 text-text-muted border-border",
   };
   const hasReels = video.reel_count > 0;
   const isProcessing = video.status === "PROCESSING";
 
   return (
     <div
-      className="group rounded-2xl bg-white/[0.03] border border-white/5 hover:border-white/15 hover:bg-white/[0.05] transition-all overflow-hidden"
+      className="group rounded-2xl bg-black/[0.03] border border-border hover:border-text/15 hover:bg-black/[0.05] transition-all overflow-hidden"
     >
       {/* 9:16 visual placeholder — clickable to status page */}
       <Link
@@ -305,45 +280,25 @@ function DashboardCard({ video, isGenerating, onGenerate }: DashboardCardProps) 
           <p className="text-sm font-medium truncate" title={video.filename}>
             {video.filename}
           </p>
-          <div className="flex items-center justify-between mt-1 text-xs text-gray-500">
+          <div className="flex items-center justify-between mt-1 text-xs text-text-subtle">
             <span>{formatCreatedAt(video.created_at)}</span>
             <span>{formatExpiresIn(video.expires_at)}</span>
           </div>
         </div>
 
-        {/* Action buttons */}
-        <div className="flex items-center gap-2">
-          {hasReels ? (
-            <Link
-              href={`/upload/gallery?videoId=${video.id}`}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-white text-xs font-medium px-3 py-2 rounded-full transition-colors"
-            >
-              <Eye size={13} />
-              View Reels
-            </Link>
-          ) : (
-            <Link
-              href={`/upload/status?videoId=${video.id}`}
-              className="flex-1 flex items-center justify-center gap-1.5 bg-white/5 hover:bg-white/10 text-white text-xs font-medium px-3 py-2 rounded-full transition-colors"
-            >
-              <Eye size={13} />
-              View Status
-            </Link>
-          )}
-          <button
-            onClick={onGenerate}
-            disabled={isGenerating || isProcessing}
-            title={isProcessing ? "Already processing" : "Generate fresh reels"}
-            className="flex-1 flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold px-3 py-2 rounded-full hover:opacity-90 transition-opacity disabled:opacity-60"
-          >
-            {isGenerating ? (
-              <Loader2 size={13} className="animate-spin" />
-            ) : (
-              <Sparkles size={13} />
-            )}
-            {isProcessing ? "Generating…" : isGenerating ? "Starting…" : "New Reels"}
-          </button>
-        </div>
+        {/* Single "Reels" button — always routes to the gallery for
+            this video. The gallery shows the existing reels (if any)
+            AND a "Generate New Reels" action, so all reel-related
+            controls live in one place. The card's 9:16 placeholder
+            above still links to /upload/status for in-progress
+            monitoring. */}
+        <Link
+          href={`/upload/gallery?videoId=${video.id}`}
+          className="w-full flex items-center justify-center gap-1.5 bg-gradient-to-r from-primary to-secondary text-white text-xs font-semibold px-3 py-2 rounded-full hover:opacity-90 transition-opacity"
+        >
+          <Film size={13} />
+          Reels
+        </Link>
       </div>
     </div>
   );

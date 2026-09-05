@@ -14,23 +14,40 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
   };
 }
 
+// Phase 12 PR 1: cap every request at 8s so a hung backend can't leave
+// the dashboard skeleton spinning forever. AbortController is the only
+// reliable way to cancel a fetch (it has no built-in timeout).
+const DEFAULT_TIMEOUT_MS = 8_000;
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = await getAuthHeaders();
-  const res = await fetch(`${API_BASE_URL}${path}`, {
-    ...init,
-    headers: { ...headers, ...(init.headers || {}) },
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail = body.detail || detail;
-    } catch {
-      // non-JSON error body
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      headers: { ...headers, ...(init.headers || {}) },
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      let detail = res.statusText;
+      try {
+        const body = await res.json();
+        detail = body.detail || detail;
+      } catch {
+        // non-JSON error body
+      }
+      throw new Error(detail || "Request failed");
     }
-    throw new Error(detail || "Request failed");
+    return (await res.json()) as Promise<T>;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      throw new Error("Request timed out — check your connection");
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  return res.json() as Promise<T>;
 }
 
 export interface UploadUrlResponse {
