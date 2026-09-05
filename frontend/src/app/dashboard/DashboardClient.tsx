@@ -320,10 +320,11 @@ function DashboardCard({ video, onDeleted }: DashboardCardProps) {
           </div>
         )}
 
-        {/* Per-card delete — top-right corner, sits above the reel-count
-            badge. The button is a separate click target (not inside the
-            <Link>) so clicking it doesn't navigate to the status page.
-            Revealed on hover so the cards stay clean by default. */}
+        {/* Per-card delete — top-right corner, sitting to the LEFT of the
+            reel-count badge (right-12) so the two don't overlap. Separate
+            click target (not inside the <Link>) so clicking it doesn't
+            navigate to the status page. Revealed on hover so the cards
+            stay clean by default. */}
         <button
           type="button"
           onClick={(e) => {
@@ -333,7 +334,7 @@ function DashboardCard({ video, onDeleted }: DashboardCardProps) {
           }}
           aria-label={`Delete ${video.filename}`}
           title="Delete video"
-          className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 backdrop-blur text-white opacity-0 group-hover:opacity-100 hover:bg-red-500/80 focus:opacity-100 transition-all"
+          className="absolute top-3 right-12 p-2 rounded-full bg-black/60 backdrop-blur text-white opacity-0 group-hover:opacity-100 hover:bg-red-500/80 focus:opacity-100 transition-all"
         >
           <Trash2 size={14} />
         </button>
