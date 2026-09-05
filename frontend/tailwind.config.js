@@ -6,9 +6,20 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        primary: "#FF0050", // TikTok-like Red
-        secondary: "#00F2EA", // TikTok-like Cyan
-        dark: "#121212",
+        // Brand colors — fixed in both themes (the gradient is the
+        // brand, not a theme token).
+        primary:   "var(--primary)",
+        secondary: "var(--secondary)",
+        // Phase 12 PR 2: theme tokens. The `dark: "#121212"` literal
+        // is gone; existing `bg-dark` usages get renamed to `bg-bg` in
+        // PR 7's mechanical swap.
+        bg:            "rgb(var(--bg) / <alpha-value>)",
+        surface:       "rgb(var(--surface) / <alpha-value>)",
+        "surface-2":   "rgb(var(--surface-2) / <alpha-value>)",
+        border:        "rgb(var(--border) / <alpha-value>)",
+        text:          "rgb(var(--text) / <alpha-value>)",
+        "text-muted":  "rgb(var(--text-muted) / <alpha-value>)",
+        "text-subtle": "rgb(var(--text-subtle) / <alpha-value>)",
       },
       // Phase 11 animations. Used by Toast (toast-in), AppShell drawer
       // (toast-in reused for fade), and any "in progress" indicators.

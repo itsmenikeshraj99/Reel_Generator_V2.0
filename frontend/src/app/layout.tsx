@@ -37,15 +37,31 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
+// Phase 12 PR 2: inline script that runs before React hydrates to
+// apply the saved theme. Prevents flash-of-dark when the user prefers
+// light. Safe because it just reads localStorage and sets a single
+// attribute on <html>; no network, no async, no user data exposure.
+const themeScript = `
+  try {
+    var t = localStorage.getItem('reelgen-theme');
+    if (t !== 'light' && t !== 'dark') t = 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  } catch (e) {}
+`;
+
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
   return (
-    // `data-theme` is set for future light-mode support; the app is
-    // currently dark-only (Phase 11).
+    // `data-theme` is set inline by the script above before React
+    // hydrates, so the server-rendered "dark" is only the SSR default;
+    // the client value (from localStorage) takes over on first paint.
     <html lang="en" data-theme="dark" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeScript }} />
+      </head>
       <body className={inter.className}>
         <ToastProvider>{children}</ToastProvider>
       </body>

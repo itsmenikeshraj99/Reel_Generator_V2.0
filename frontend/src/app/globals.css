@@ -2,18 +2,44 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --foreground-rgb: 255, 255, 255;
-  --background-start-rgb: 18, 18, 18;
-  --background-end-rgb: 0, 0, 0;
+/* Phase 12 PR 2 — theme tokens.
+   Light is the default for accessibility; dark is what the app launches
+   in (data-theme="dark" on <html>). All components continue to use
+   Tailwind utilities that read these via the theme color extension in
+   tailwind.config.js. The old --foreground-rgb / --background-* vars
+   are removed; body now uses --gradient-bg + --text directly. */
+:root,
+[data-theme="light"] {
+  --bg:           250 250 252;   /* near-white, slight cool tint */
+  --bg-elevated: 255 255 255;
+  --surface:      255 255 255;   /* cards, modal, drawer */
+  --surface-2:    244 245 250;   /* subtle inset */
+  --border:       226 232 240;
+  --text:          15  23  42;   /* slate-900 */
+  --text-muted:    71  85 105;   /* slate-600 */
+  --text-subtle:  100 116 139;   /* slate-500 */
+  --primary:        #FF0050;
+  --secondary:      #00F2EA;
+  --gradient-bg:   linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 100%);
+  color-scheme: light;
+}
+
+[data-theme="dark"] {
+  --bg:            18  18  22;   /* slightly bluer than #121212 */
+  --bg-elevated:   24  24  30;
+  --surface:       24  24  30;
+  --surface-2:     38  38  46;
+  --border:        46  46  56;
+  --text:         248 250 252;
+  --text-muted:   148 163 184;
+  --text-subtle:  100 116 139;
+  --primary:        #FF0050;
+  --secondary:      #00F2EA;
+  --gradient-bg:   linear-gradient(135deg, #0f0f1a 0%, #1a0a14 50%, #0a0f1a 100%);
+  color-scheme: dark;
 }
 
 body {
-  color: rgb(var(--foreground-rgb));
-  background: linear-gradient(
-      to bottom,
-      transparent,
-      rgb(var(--background-end-rgb))
-    )
-    rgb(var(--background-start-rgb));
+  background: var(--gradient-bg);
+  color: rgb(var(--text));
 }
