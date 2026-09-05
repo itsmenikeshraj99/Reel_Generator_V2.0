@@ -71,10 +71,17 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-4">
       <div className="text-center space-y-6 max-w-2xl">
-        <h1 className="text-6xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+        <img
+          src="/logo-1024x1024.png"
+          alt="Reel Generator logo"
+          width={180}
+          height={180}
+          className="mx-auto w-32 h-32 sm:w-40 sm:h-40 md:w-44 md:h-44 drop-shadow-2xl"
+        />
+        <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
           AI Reels Generator
         </h1>
-        <p className="text-gray-400 text-xl">
+        <p className="text-gray-400 text-lg sm:text-xl">
           Turn your long videos into viral short-form content in seconds.
         </p>
         <button

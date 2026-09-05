@@ -43,6 +43,25 @@ A three-tier application that turns long-form video into short, shareable reels 
 - **🔔 Toast notifications** — non-blocking feedback for "Reels ready!", "Session cleared", share, etc.
 - **🛡️ Defense in depth** — CORS allow-list, CSP headers, X-Frame-Options, RLS on the user-facing path, service-role keys scoped to the worker
 
+## 🎨 Branding
+
+| Where | Asset | Source |
+|---|---|---|
+| Browser tab (favicon) | `src/app/icon.png` (32×32, 4 KB) | Next.js auto-detected |
+| iOS home screen | `src/app/apple-icon.png` (192×192, 35 KB) | Next.js auto-detected |
+| Social share preview (OG / Twitter) | `src/app/opengraph-image.png` (1200×630, 254 KB) | Next.js auto-detected |
+| AppShell nav (32×32 icon + "Reel Generator" text) | `public/android-chrome-192x192.png` | referenced in `src/components/AppShell.tsx` |
+| Landing-page hero (180×180) | `public/logo-1024x1024.png` | referenced in `src/app/page.tsx` |
+
+All 7 logo variants live under `frontend/public/` and `frontend/src/app/`. The
+high-res master is `public/reel_generator_logo.png` (2396×2582, palette mode
+— keep as source of truth; the others are sized/optimized derivatives).
+
+To rebrand, drop a new `public/reel_generator_logo.png`, then re-derive
+`logo-1024x1024.png` + `android-chrome-192x192.png` + `apple-touch-icon.png`
++ `favicon-40x40.png` + `og-image.png` (and copy the favicon/apple/og into
+`src/app/`). No code changes needed — the references are by filename.
+
 ## 🏗️ Architecture
 
 The system has three independently deployable services, all driven by a Postgres
@@ -102,8 +121,10 @@ taken offline for maintenance without ever touching the user-facing API.
 │   │   └── main.py     HTTP entry point
 │   └── requirements.txt
 ├── frontend/           Next.js 16 (App Router) + Tailwind + Supabase SSR
+│   ├── public/         logo + favicon + OG variants (see Branding above)
 │   ├── src/
-│   │   ├── app/        auth, upload, upload/status, upload/gallery, dashboard
+│   │   ├── app/        auth, upload, upload/status, upload/gallery, dashboard,
+│   │   │              icon.png, apple-icon.png, opengraph-image.png
 │   │   ├── components/ AppShell, AuthModal, Toast, Skeleton, EmptyState,
 │   │   │              ProgressBar, UploadDropzone, ReelCard, VideoPreview,
 │   │   │              ShareMenu
@@ -381,6 +402,7 @@ open deploy/SETUP.md
 - [x] Public gallery with download
 - [x] Railway deploy (backend + worker) + Vercel (frontend) — no card required
 - [x] **UI/UX overhaul** — AppShell, dashboard, progress bar, share menu, toasts, mobile drawer (Phase 11)
+- [x] **Branding** — logo, favicon, OG image, AppShell + landing wire-up (2026-09-05)
 - [ ] Google Cloud Run deploy — switch back when you have a Visa/Mastercard
 - [ ] Cloud Tasks queue (production-grade queueing)
 - [ ] Secret Manager + custom domain (production hardening)
@@ -402,6 +424,14 @@ PRs welcome. Please:
 MIT — see [`LICENSE`](LICENSE).
 
 ## 📝 Changelog
+
+### Branding (2026-09-05)
+- Added `reel_generator_logo.png` (lightning-bolt + "REEL GENERATOR" wordmark) and 6 sized variants under `frontend/public/` and `frontend/src/app/`
+- Auto-detected `icon.png` (32×32 favicon), `apple-icon.png` (192×192 iOS), and `opengraph-image.png` (1200×630 OG) — no `metadata.icons` config needed for them
+- Explicit `metadata.icons` added in `layout.tsx` as a defensive fallback
+- AppShell top nav now shows the 32×32 mark + "Reel Generator" wordmark instead of the gradient text
+- Landing-page hero now shows the 180×1024 logo above the headline
+- New "Branding" section in the README documenting the file layout and rebrand steps
 
 ### Phase 11 — UI/UX Overhaul (2026-09-05)
 

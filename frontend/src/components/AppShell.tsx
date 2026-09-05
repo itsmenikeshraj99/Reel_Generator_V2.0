@@ -99,9 +99,18 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
             <Link
               href="/"
-              className="text-lg sm:text-xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent whitespace-nowrap"
+              className="flex items-center gap-2 whitespace-nowrap hover:opacity-80 transition-opacity"
             >
-              AI Reels Generator
+              <img
+                src="/android-chrome-192x192.png"
+                alt="Reel Generator"
+                width={32}
+                height={32}
+                className="w-8 h-8"
+              />
+              <span className="text-lg sm:text-xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
+                Reel Generator
+              </span>
             </Link>
 
             {/* Desktop links */}

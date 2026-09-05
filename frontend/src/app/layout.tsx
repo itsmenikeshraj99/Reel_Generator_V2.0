@@ -22,6 +22,13 @@ export const metadata: Metadata = {
     description: "Turn long videos into viral short-form reels with AI.",
   },
   robots: { index: true, follow: true },
+  icons: {
+    icon: [
+      { url: "/icon.png", sizes: "any", type: "image/png" },
+      { url: "/favicon-40x40.png", sizes: "40x40", type: "image/png" },
+    ],
+    apple: { url: "/apple-icon.png", sizes: "180x180", type: "image/png" },
+  },
 };
 
 export const viewport: Viewport = {
