@@ -38,9 +38,10 @@ A three-tier application that turns long-form video into short, shareable reels 
 - **✂️ Lossless stitching** — re-encoded cuts + concat demuxer + `aresample=async=1` to fix any A/V drift
 - **📝 Auto captions** — word-level timing from Gemini transcript → burned-in captions on the final reel
 - **📥 Download + share** — public URL on Supabase Storage; click-to-download or share to Twitter / LinkedIn / WhatsApp from the gallery
-- **🗂 Dashboard** — every uploaded video in a grid with status badges, reel counts, and an "auto-delete in Xh" countdown
+- **🗂 Dashboard** — every uploaded video in a grid with status badges, reel counts, and an "auto-delete in Xh" countdown. Each card opens the gallery for its reels; "Generate New Reels" lives on the gallery, not the card.
 - **📱 Mobile-first UI** — top nav + slide-in drawer under 768px, responsive grids, gradient + Play-icon video previews that load on hover
 - **🔔 Toast notifications** — non-blocking feedback for "Reels ready!", "Session cleared", share, etc.
+- **🌗 Day/night theme** — semantic CSS variables, persisted in `localStorage` (`reelgen-theme`), Sun/Moon toggle in the nav. Light mode is fully styled; dark mode is the default and visually unchanged.
 - **🛡️ Defense in depth** — CORS allow-list, CSP headers, X-Frame-Options, RLS on the user-facing path, service-role keys scoped to the worker
 
 ## 🎨 Branding
@@ -101,6 +102,21 @@ The worker is a long-running, CPU/GPU-heavy process that:
 This split means the worker can be moved to a GPU box, scaled horizontally, or
 taken offline for maintenance without ever touching the user-facing API.
 
+### UI design system (Phase 12)
+
+- **Theme tokens** — all colors live in CSS variables on `:root` (light) and
+  `[data-theme="dark"]` (dark). Tailwind colors (`bg`, `surface`, `surface-2`,
+  `border`, `text`, `text-muted`, `text-subtle`) reference those variables,
+  so swapping themes is a single attribute flip on `<html>`.
+- **No-flash boot** — an inline `<head>` script reads
+  `localStorage.getItem('reelgen-theme')` and sets `data-theme` before first
+  paint, so there's no flash of dark/light on reload.
+- **Persistence** — the theme is a single key (`reelgen-theme` ∈
+  `{"light","dark"}`, default `dark`); `useTheme()` reads + writes it.
+- **No hardcoded colors** in app code — every class is a token. Gradient
+  primary buttons, color-coded status badges, and the thumbnail overlay
+  are the only intentional exceptions (they read on both themes).
+
 ## 📂 Project layout
 
 ```
@@ -127,7 +143,8 @@ taken offline for maintenance without ever touching the user-facing API.
 │   │   │              icon.png, apple-icon.png, opengraph-image.png
 │   │   ├── components/ AppShell, AuthModal, Toast, Skeleton, EmptyState,
 │   │   │              ProgressBar, UploadDropzone, ReelCard, VideoPreview,
-│   │   │              ShareMenu
+│   │   │              ShareMenu, ThemeToggle
+│   │   ├── hooks/      useTheme
 │   │   └── lib/        api.ts (typed client), supabase.ts, cn.ts
 │   ├── next.config.js  CSP / X-Frame-Options / referrer-policy
 │   └── package.json
@@ -403,6 +420,7 @@ open deploy/SETUP.md
 - [x] Railway deploy (backend + worker) + Vercel (frontend) — no card required
 - [x] **UI/UX overhaul** — AppShell, dashboard, progress bar, share menu, toasts, mobile drawer (Phase 11)
 - [x] **Branding** — logo, favicon, OG image, AppShell + landing wire-up (2026-09-05)
+- [x] **Light theme + token system** — semantic CSS variables, day/night toggle, name field in AuthModal, dashboard consolidation to single "Reels" button, gallery "Generate New Reels" (Phase 12)
 - [ ] Google Cloud Run deploy — switch back when you have a Visa/Mastercard
 - [ ] Cloud Tasks queue (production-grade queueing)
 - [ ] Secret Manager + custom domain (production hardening)
@@ -432,6 +450,70 @@ MIT — see [`LICENSE`](LICENSE).
 - AppShell top nav now shows the 32×32 mark + "Reel Generator" wordmark instead of the gradient text
 - Landing-page hero now shows the 180×1024 logo above the headline
 - New "Branding" section in the README documenting the file layout and rebrand steps
+
+### Phase 12 — Light theme + dashboard consolidation (2026-09-05)
+
+UI-only refactor (no backend or worker changes). Adds day/night theming,
+a name field in sign-up, and consolidates the dashboard around videos.
+
+**Loading bug fix**
+- `api.request()` now wraps every fetch in an `AbortController` with an
+  8s timeout; stuck requests surface a "Request timed out" error instead
+  of an infinite skeleton.
+- On 401, the dashboard clears its `videos` array before the redirect
+  so the error state is visible during the bounce (no flash of stale
+  skeleton).
+
+**Theme system (PR 2-3)**
+- `globals.css` defines semantic CSS variables on `:root` (light) and
+  `[data-theme="dark"]` — `--bg`, `--surface`, `--surface-2`,
+  `--border`, `--text`, `--text-muted`, `--text-subtle`, `--primary`,
+  `--secondary`, `--gradient-bg`.
+- `tailwind.config.js` adds token-backed color names so future classes
+  are theme-aware by default.
+- `layout.tsx` ships an inline `<head>` script that reads
+  `localStorage['reelgen-theme']` and stamps `data-theme` on `<html>`
+  before first paint (no flash of dark/light on reload).
+- `useTheme()` (`src/hooks/`) is a client hook reading/writing the
+  preference; `<ThemeToggle>` is a Sun/Moon button wired into
+  `AppShell` (desktop nav + mobile drawer).
+- Default theme is `dark`; both themes are fully styled.
+
+**AuthModal redesign (PR 4)**
+- Sign-up form now asks for a `name` (only on sign-up; sign-in keeps
+  email + password). The name is passed to Supabase as
+  `data: { full_name }` and lands in `user_metadata`.
+- Glass-card visual (backdrop-blur, soft border), gradient Sparkles
+  icon header, 2-column OAuth grid (Google + GitHub).
+- AppShell uses `user_metadata.full_name` → falls back to
+  `user_metadata.name` → email local-part in the user menu.
+
+**Dashboard consolidation (PR 5)**
+- The dashboard is now strictly a videos view — no "Reels" section, no
+  per-card generation button.
+- CTA heading: "Your Reels" → "Your Library".
+- Each card has a single "Reels" button (gradient, Film icon) that
+  opens the gallery for that video.
+
+**Gallery "Generate New Reels" (PR 6)**
+- The gallery now has an always-reachable "Generate New Reels" button
+  in the top action group, before "Finish & Clear Session".
+- Works for both regenerating an existing video and kicking off the
+  first generation when the gallery is empty.
+- Local `isGenerating` flag prevents double-submit; backend's 409
+  guard on `/videos/{id}/process` is the safety net.
+
+**Semantic token swap (PR 7)**
+- Mechanical find-replace across 21 files: hardcoded dark classes
+  (`text-white`, `text-gray-300/400/500`, `bg-white/5/10`,
+  `border-white/10/20`, `bg-dark`) → token-backed classes
+  (`text-text`, `text-text-muted`, `text-text-subtle`, `bg-black/5/10`,
+  `border-border`, `bg-bg`).
+- Intentionally kept: gradient primary buttons (`text-white` on
+  gradient), color-coded status badges (`*-500/15` + `*-300`),
+  thumbnail overlay badges (`bg-black/60 backdrop-blur`), and the
+  VideoPreview Play icon (`text-white/90` on dark glass).
+- Dark mode is visually identical; light mode is now fully styled.
 
 ### Phase 11 — UI/UX Overhaul (2026-09-05)
 
@@ -486,7 +568,7 @@ plus a `signed_upload_url` on the existing `POST /api/videos/upload-url`).
 
 ### Earlier phases
 See the [commit history](https://github.com/itsmenikeshraj99/Reel_Generator_V2.0/commits/main)
-for the full changelog of the auth + pipeline + deploy work.
+for the full changelog of the auth + pipeline + deploy work (Phases 1–10).
 
 ---
 
