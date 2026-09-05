@@ -189,12 +189,12 @@ export default function UploadPage() {
       <div className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12">
         <div className="text-center mb-8">
           <h1 className="text-3xl sm:text-4xl font-bold mb-2">Upload Video</h1>
-          <p className="text-gray-400">
+          <p className="text-text-muted">
             Upload your long-form video to generate viral reels
           </p>
         </div>
 
-        <div className="bg-white/5 border border-white/10 rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl">
+        <div className="bg-black/5 border border-border rounded-3xl p-6 sm:p-8 backdrop-blur-md shadow-2xl">
           {/* Hidden native input used by the dropzone's label */}
           <input
             ref={inputRef}
@@ -249,7 +249,7 @@ export default function UploadPage() {
           </div>
         </div>
 
-        <p className="text-center text-xs text-gray-500 mt-6">
+        <p className="text-center text-xs text-text-subtle mt-6">
           Your video is auto-deleted after 24 hours • Max {MAX_SIZE_MB}MB
         </p>
       </div>

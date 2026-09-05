@@ -8,14 +8,14 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <div className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-6">
+    <div className="min-h-screen bg-bg text-text flex flex-col items-center justify-center p-6">
       <div className="max-w-md text-center space-y-4">
         <h1 className="text-3xl font-bold">Something went wrong</h1>
-        <p className="text-gray-400">
+        <p className="text-text-muted">
           {error.message || "An unexpected error occurred."}
         </p>
         {error.digest && (
-          <p className="text-xs text-gray-500">Error ID: {error.digest}</p>
+          <p className="text-xs text-text-subtle">Error ID: {error.digest}</p>
         )}
         <button
           onClick={reset}

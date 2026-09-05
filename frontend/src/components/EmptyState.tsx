@@ -24,12 +24,12 @@ export function EmptyState({
   ctaLabel,
 }: EmptyStateProps) {
   return (
-    <div className="flex flex-col items-center justify-center text-center py-16 px-6 rounded-2xl border border-dashed border-white/10 bg-white/[0.02]">
+    <div className="flex flex-col items-center justify-center text-center py-16 px-6 rounded-2xl border border-dashed border-border bg-black/[0.02]">
       <div className="text-5xl mb-4" aria-hidden="true">
         {icon}
       </div>
-      <h3 className="text-lg font-semibold text-white mb-1">{title}</h3>
-      {body && <p className="text-sm text-gray-400 max-w-md mb-6">{body}</p>}
+      <h3 className="text-lg font-semibold text-text mb-1">{title}</h3>
+      {body && <p className="text-sm text-text-muted max-w-md mb-6">{body}</p>}
       {ctaHref && ctaLabel && (
         <Link
           href={ctaHref}

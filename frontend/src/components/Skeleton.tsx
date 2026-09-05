@@ -41,7 +41,7 @@ export function Skeleton({
         height: typeof height === "number" ? `${height}px` : height,
       }}
       className={cn(
-        "bg-white/5 animate-pulse",
+        "bg-black/5 animate-pulse",
         shape,
         className,
       )}

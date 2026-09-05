@@ -34,7 +34,7 @@ export function ReelCard({ reel, index, className }: ReelCardProps) {
   return (
     <div
       className={cn(
-        "bg-white/5 border border-white/10 rounded-3xl overflow-hidden group hover:border-primary/40 transition-all flex flex-col",
+        "bg-black/5 border border-border rounded-3xl overflow-hidden group hover:border-primary/40 transition-all flex flex-col",
         className,
       )}
     >
@@ -54,14 +54,14 @@ export function ReelCard({ reel, index, className }: ReelCardProps) {
           >
             {title}
           </h3>
-          <p className="text-[11px] text-gray-500 mt-0.5">Viral Candidate #{index + 1}</p>
+          <p className="text-[11px] text-text-subtle mt-0.5">Viral Candidate #{index + 1}</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <ShareMenu url={reel.url} title={title} />
           <a
             href={reel.url}
             download={filename}
-            className="p-2.5 bg-white text-black rounded-full hover:bg-gray-200 transition-colors"
+            className="p-2.5 bg-text text-bg rounded-full hover:opacity-90 transition-colors"
             aria-label={`Download ${title}`}
             title="Download"
           >

@@ -36,7 +36,7 @@ export function ProgressBar({
   return (
     <div className={cn("w-full", className)}>
       {(label || !indeterminate) && (
-        <div className="flex items-center justify-between text-xs text-gray-400 mb-1.5">
+        <div className="flex items-center justify-between text-xs text-text-muted mb-1.5">
           {label && <span>{label}</span>}
           {!indeterminate && <span>{pct}%</span>}
         </div>
@@ -47,7 +47,7 @@ export function ProgressBar({
         aria-valuemin={0}
         aria-valuemax={100}
         aria-label={label || "Progress"}
-        className="h-1.5 w-full bg-white/10 rounded-full overflow-hidden"
+        className="h-1.5 w-full bg-black/10 rounded-full overflow-hidden"
       >
         <div
           className={cn(

@@ -155,7 +155,7 @@ function ToastItem({
       ? "border-green-500/30 bg-green-500/10 text-green-100"
       : toast.variant === "error"
       ? "border-red-500/30 bg-red-500/10 text-red-100"
-      : "border-white/10 bg-white/5 text-white";
+      : "border-border bg-black/5 text-text";
 
   return (
     <div

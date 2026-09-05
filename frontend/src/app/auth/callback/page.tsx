@@ -75,12 +75,12 @@ export default function AuthCallback() {
   }, []);
 
   return (
-    <main className="min-h-screen bg-dark text-white flex items-center justify-center p-4">
+    <main className="min-h-screen bg-bg text-text flex items-center justify-center p-4">
       <div className="text-center max-w-md space-y-4">
         {status === "loading" && (
           <>
             <Loader2 className="animate-spin mx-auto" size={40} />
-            <p className="text-gray-400">{message}</p>
+            <p className="text-text-muted">{message}</p>
           </>
         )}
 
@@ -88,8 +88,8 @@ export default function AuthCallback() {
           <>
             <div className="text-5xl">✅</div>
             <h1 className="text-2xl font-bold">Welcome!</h1>
-            <p className="text-gray-400">{message}</p>
-            <p className="text-sm text-gray-500">Redirecting…</p>
+            <p className="text-text-muted">{message}</p>
+            <p className="text-sm text-text-subtle">Redirecting…</p>
           </>
         )}
 
@@ -97,10 +97,10 @@ export default function AuthCallback() {
           <>
             <div className="text-5xl">⚠️</div>
             <h1 className="text-2xl font-bold">Sign-in Failed</h1>
-            <p className="text-gray-400">{message}</p>
+            <p className="text-text-muted">{message}</p>
             <Link
               href="/"
-              className="inline-block bg-white text-black px-6 py-2 rounded-full font-bold hover:bg-gray-200 transition-all"
+              className="inline-block bg-text text-bg px-6 py-2 rounded-full font-bold hover:opacity-90 transition-all"
             >
               Back to Home
             </Link>

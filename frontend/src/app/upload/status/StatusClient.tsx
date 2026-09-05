@@ -175,7 +175,7 @@ export default function StatusClient() {
       <AppShell>
         <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
           <Loader2 className="animate-spin text-primary" size={32} />
-          <p className="text-gray-400 text-sm mt-3">Checking session…</p>
+          <p className="text-text-muted text-sm mt-3">Checking session…</p>
         </div>
       </AppShell>
     );
@@ -240,9 +240,9 @@ export default function StatusClient() {
   return (
     <AppShell>
       <div className="min-h-[80vh] flex flex-col items-center justify-center p-6">
-        <div className="w-full max-w-lg bg-white/5 border border-white/10 rounded-3xl p-10 backdrop-blur-md shadow-2xl">
+        <div className="w-full max-w-lg bg-black/5 border border-border rounded-3xl p-10 backdrop-blur-md shadow-2xl">
           <div className="text-center mb-8">
-            <div className="inline-flex p-4 rounded-full bg-white/5 mb-4">
+            <div className="inline-flex p-4 rounded-full bg-black/5 mb-4">
               {isReady ? (
                 <CheckCircle size={48} className="text-green-400" />
               ) : isFailed ? (
@@ -258,7 +258,7 @@ export default function StatusClient() {
                   ? "Processing Failed"
                   : "Processing Your Video"}
             </h1>
-            <p className="text-gray-400 text-sm">
+            <p className="text-text-muted text-sm">
               {isReady
                 ? "Your viral clips have been generated"
                 : isFailed
@@ -270,13 +270,13 @@ export default function StatusClient() {
           {/* Overall progress bar */}
           {!isFailed && (
             <div className="mb-8">
-              <div className="flex justify-between text-xs text-gray-400 mb-1">
+              <div className="flex justify-between text-xs text-text-muted mb-1">
                 <span>
                   {completedCount} of {STAGE_CONFIG.length} steps complete
                 </span>
                 <span>{progressPct}%</span>
               </div>
-              <div className="h-2 w-full bg-white/10 rounded-full overflow-hidden">
+              <div className="h-2 w-full bg-black/10 rounded-full overflow-hidden">
                 <div
                   className={`h-full transition-all duration-700 ease-out ${
                     isReady
@@ -309,7 +309,7 @@ export default function StatusClient() {
           )}
 
           {/* Diagnostics footer */}
-          <div className="mt-6 flex items-center justify-between text-xs text-gray-500">
+          <div className="mt-6 flex items-center justify-between text-xs text-text-subtle">
             <div className="flex items-center gap-1.5">
               <RefreshCw size={10} />
               <span>
@@ -331,7 +331,7 @@ export default function StatusClient() {
               </button>
               <Link
                 href="/dashboard"
-                className="block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-3 rounded-full font-medium text-center text-sm transition-all"
+                className="block w-full bg-black/5 hover:bg-black/10 border border-border text-text py-3 rounded-full font-medium text-center text-sm transition-all"
               >
                 Open Dashboard
               </Link>
@@ -341,7 +341,7 @@ export default function StatusClient() {
           {isFailed && (
             <Link
               href="/dashboard"
-              className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
+              className="mt-10 inline-block w-full bg-black/5 hover:bg-black/10 border border-border text-text py-4 rounded-full font-bold text-lg text-center transition-all"
             >
               Back to Dashboard
             </Link>
@@ -350,7 +350,7 @@ export default function StatusClient() {
           {status === "EXPIRED" && (
             <Link
               href="/dashboard"
-              className="mt-10 inline-block w-full bg-white/5 hover:bg-white/10 border border-white/10 text-white py-4 rounded-full font-bold text-lg text-center transition-all"
+              className="mt-10 inline-block w-full bg-black/5 hover:bg-black/10 border border-border text-text py-4 rounded-full font-bold text-lg text-center transition-all"
             >
               Back to Dashboard
             </Link>
@@ -370,7 +370,7 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
     <div
       className={`flex items-center gap-4 p-3 rounded-xl transition-all duration-500 ${
         isActive
-          ? "bg-white/5 scale-[1.02] border border-white/10"
+          ? "bg-black/5 scale-[1.02] border border-border"
           : isDone
             ? "bg-green-500/5 border border-green-500/20"
             : isFailed
@@ -383,10 +383,10 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
           isDone
             ? "bg-green-500 text-white"
             : isActive
-              ? "bg-white/10 text-current"
+              ? "bg-black/10 text-current"
               : isFailed
                 ? "bg-red-500/20 text-red-400"
-                : "bg-white/5"
+                : "bg-black/5"
         }`}
       >
         {isDone ? (
@@ -405,15 +405,15 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
             isDone
               ? "text-green-400"
               : isActive
-                ? "text-white"
+                ? "text-text"
                 : isFailed
                   ? "text-red-400"
-                  : "text-gray-400"
+                  : "text-text-muted"
           }`}
         >
           {stage.label}
         </p>
-        <p className="text-xs text-gray-500 mt-0.5">
+        <p className="text-xs text-text-subtle mt-0.5">
           {isDone ? (
             "Done"
           ) : isActive ? (
@@ -428,7 +428,7 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
         </p>
       </div>
       {isActive && (
-        <div className="h-1.5 w-16 bg-white/10 rounded-full overflow-hidden flex-shrink-0">
+        <div className="h-1.5 w-16 bg-black/10 rounded-full overflow-hidden flex-shrink-0">
           <div className="h-full bg-current animate-pulse w-full" />
         </div>
       )}

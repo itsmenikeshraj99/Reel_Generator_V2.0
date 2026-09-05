@@ -50,7 +50,7 @@ export default function Home() {
 
   if (!authChecked) {
     return (
-      <div className="min-h-screen bg-dark text-white flex items-center justify-center">
+      <div className="min-h-screen bg-bg text-text flex items-center justify-center">
         <Skeleton width={120} height={40} className="rounded-full" />
       </div>
     );
@@ -69,7 +69,7 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-dark text-white flex flex-col items-center justify-center p-4">
+    <main className="min-h-screen bg-bg text-text flex flex-col items-center justify-center p-4">
       <div className="text-center space-y-6 max-w-2xl">
         <img
           src="/logo-1024x1024.png"
@@ -81,16 +81,16 @@ export default function Home() {
         <h1 className="text-5xl sm:text-6xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
           AI Reels Generator
         </h1>
-        <p className="text-gray-400 text-lg sm:text-xl">
+        <p className="text-text-muted text-lg sm:text-xl">
           Turn your long videos into viral short-form content in seconds.
         </p>
         <button
           onClick={() => setIsAuthOpen(true)}
-          className="bg-white text-black px-8 py-4 rounded-full font-bold text-lg hover:bg-gray-200 transition-all scale-100 hover:scale-105 active:scale-95"
+          className="bg-text text-bg px-8 py-4 rounded-full font-bold text-lg hover:opacity-90 transition-all scale-100 hover:scale-105 active:scale-95"
         >
           Get Started
         </button>
-        <p className="text-xs text-gray-500 pt-4">
+        <p className="text-xs text-text-subtle pt-4">
           Powered by Google Gemini • 24h sessions, no account data sold
         </p>
       </div>

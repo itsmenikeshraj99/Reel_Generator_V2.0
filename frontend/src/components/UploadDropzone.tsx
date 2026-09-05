@@ -93,7 +93,7 @@ export function UploadDropzone({
         className={cn(
           "relative block border-2 border-dashed rounded-2xl p-10 sm:p-12 text-center transition-all",
           // Idle
-          !showSelected && !dragOver && !error && "border-white/20 hover:border-primary/50 hover:bg-white/5",
+          !showSelected && !dragOver && !error && "border-border hover:border-primary/50 hover:bg-black/5",
           // Drag-over visual
           dragOver && "border-primary bg-primary/10 scale-[1.01]",
           // Selected visual
@@ -121,7 +121,7 @@ export function UploadDropzone({
               "p-4 rounded-full transition-all",
               dragOver
                 ? "bg-primary/20 scale-110"
-                : "bg-white/5 text-primary",
+                : "bg-black/5 text-primary",
             )}
           >
             {showSelected ? (
@@ -144,7 +144,7 @@ export function UploadDropzone({
                 ? file.name
                 : "Drag & drop or click to upload"}
             </p>
-            <p className="text-sm text-gray-500 mt-1">{sizeHint}</p>
+            <p className="text-sm text-text-subtle mt-1">{sizeHint}</p>
           </div>
         </div>
       </label>

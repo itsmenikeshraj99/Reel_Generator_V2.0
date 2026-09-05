@@ -81,16 +81,16 @@ export function ShareMenu({ url, title, className }: ShareMenuProps) {
       className={cn("relative", className)}
     >
       <summary
-        className="list-none cursor-pointer p-2.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-full transition-colors flex items-center justify-center"
+        className="list-none cursor-pointer p-2.5 bg-black/5 hover:bg-black/10 border border-border rounded-full transition-colors flex items-center justify-center"
         aria-label="Share reel"
         // Remove the default disclosure triangle on Safari
         style={{ listStyle: "none" }}
       >
-        <Share2 size={16} className="text-white" />
+        <Share2 size={16} className="text-text" />
       </summary>
 
       <div
-        className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-dark border border-white/10 shadow-2xl z-50 p-1.5 animate-toast-in"
+        className="absolute right-0 top-full mt-2 w-56 rounded-2xl bg-bg border border-border shadow-2xl z-50 p-1.5 animate-toast-in"
         // The summary click can sometimes leave the popover un-clickable
         // on iOS; this keeps it interactive.
         onClick={(e) => e.stopPropagation()}
@@ -98,9 +98,9 @@ export function ShareMenu({ url, title, className }: ShareMenuProps) {
         <button
           type="button"
           onClick={handleCopy}
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-gray-200 hover:bg-white/5 transition-colors text-left"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-text hover:bg-black/5 transition-colors text-left"
         >
-          <Copy size={16} className="text-gray-400" />
+          <Copy size={16} className="text-text-muted" />
           Copy link
         </button>
 
@@ -108,10 +108,10 @@ export function ShareMenu({ url, title, className }: ShareMenuProps) {
           href={twitterHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-gray-200 hover:bg-white/5 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-text hover:bg-black/5 transition-colors"
           onClick={() => detailsRef.current?.removeAttribute("open")}
         >
-          <Twitter size={16} className="text-gray-400" />
+          <Twitter size={16} className="text-text-muted" />
           Share on Twitter
         </a>
 
@@ -119,10 +119,10 @@ export function ShareMenu({ url, title, className }: ShareMenuProps) {
           href={linkedInHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-gray-200 hover:bg-white/5 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-text hover:bg-black/5 transition-colors"
           onClick={() => detailsRef.current?.removeAttribute("open")}
         >
-          <Linkedin size={16} className="text-gray-400" />
+          <Linkedin size={16} className="text-text-muted" />
           Share on LinkedIn
         </a>
 
@@ -130,10 +130,10 @@ export function ShareMenu({ url, title, className }: ShareMenuProps) {
           href={whatsAppHref}
           target="_blank"
           rel="noopener noreferrer"
-          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-gray-200 hover:bg-white/5 transition-colors"
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-text hover:bg-black/5 transition-colors"
           onClick={() => detailsRef.current?.removeAttribute("open")}
         >
-          <Link2 size={16} className="text-gray-400" />
+          <Link2 size={16} className="text-text-muted" />
           Share on WhatsApp
         </a>
       </div>

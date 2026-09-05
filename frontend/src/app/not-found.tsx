@@ -9,20 +9,20 @@ export default function NotFound() {
         <h1 className="text-7xl font-extrabold bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">
           404
         </h1>
-        <p className="text-gray-300 mt-4 text-lg">Page not found</p>
-        <p className="text-gray-500 mt-1 text-sm max-w-md">
+        <p className="text-text-muted mt-4 text-lg">Page not found</p>
+        <p className="text-text-subtle mt-1 text-sm max-w-md">
           The page you're looking for doesn't exist or may have been moved.
         </p>
         <div className="flex items-center gap-3 mt-8 flex-wrap justify-center">
           <Link
             href="/"
-            className="bg-white text-black px-5 py-2.5 rounded-full font-semibold text-sm hover:bg-gray-200 transition-colors"
+            className="bg-text text-bg px-5 py-2.5 rounded-full font-semibold text-sm hover:opacity-90 transition-colors"
           >
             Go home
           </Link>
           <Link
             href="/dashboard"
-            className="bg-white/5 hover:bg-white/10 border border-white/10 text-white px-5 py-2.5 rounded-full font-semibold text-sm transition-colors"
+            className="bg-black/5 hover:bg-black/10 border border-border text-text px-5 py-2.5 rounded-full font-semibold text-sm transition-colors"
           >
             Browse dashboard
           </Link>

@@ -29,7 +29,7 @@ export default function DashboardError({
         <div className="max-w-md mx-auto text-center">
           <AlertCircle size={48} className="text-red-400 mx-auto mb-4" />
           <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
-          <p className="text-sm text-gray-400 mb-6">
+          <p className="text-sm text-text-muted mb-6">
             {error.message || "An unexpected error occurred while loading your dashboard."}
           </p>
           <button
