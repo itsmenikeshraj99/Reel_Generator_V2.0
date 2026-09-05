@@ -207,6 +207,13 @@ async def process_video(
         expires_at = own.data[0].get("expires_at")
         if expires_at and datetime.now(timezone.utc) > datetime.fromisoformat(expires_at):
             raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
+        current_status = own.data[0].get("status")
+        # Don't allow re-enqueue while a pipeline is already running.
+        if current_status == "PROCESSING":
+            raise HTTPException(
+                status_code=409,
+                detail="This video is already being processed. Please wait.",
+            )
 
         supabase.table("videos").update({"status": "UPLOADED"}).eq("id", video_id).eq(
             "user_id", current.id
