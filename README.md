@@ -38,7 +38,7 @@ A three-tier application that turns long-form video into short, shareable reels 
 - **✂️ Lossless stitching** — re-encoded cuts + concat demuxer + `aresample=async=1` to fix any A/V drift
 - **📝 Auto captions** — word-level timing from Gemini transcript → burned-in captions on the final reel
 - **📥 Download + share** — public URL on Supabase Storage; click-to-download or share to Twitter / LinkedIn / WhatsApp from the gallery
-- **🗂 Dashboard** — every uploaded video in a grid with status badges, reel counts, and an "auto-delete in Xh" countdown. Each card opens the gallery for its reels; "Generate New Reels" lives on the gallery, not the card.
+- **🗂 Dashboard** — every uploaded video in a grid with status badges, reel counts, and an "auto-delete in Xh" countdown. Each card opens the gallery for its reels; "Generate New Reels" lives on the gallery, not the card. **Per-card delete** (top-right, hover-revealed trash icon) lets you remove any single video + its reels from the dashboard.
 - **📱 Mobile-first UI** — top nav + slide-in drawer under 768px, responsive grids, gradient + Play-icon video previews that load on hover
 - **🔔 Toast notifications** — non-blocking feedback for "Reels ready!", "Session cleared", share, etc.
 - **🌗 Day/night theme** — semantic CSS variables, persisted in `localStorage` (`reelgen-theme`), Sun/Moon toggle in the nav. Light mode is fully styled; dark mode is the default and visually unchanged.
@@ -421,6 +421,7 @@ open deploy/SETUP.md
 - [x] **UI/UX overhaul** — AppShell, dashboard, progress bar, share menu, toasts, mobile drawer (Phase 11)
 - [x] **Branding** — logo, favicon, OG image, AppShell + landing wire-up (2026-09-05)
 - [x] **Light theme + token system** — semantic CSS variables, day/night toggle, name field in AuthModal, dashboard consolidation to single "Reels" button, gallery "Generate New Reels" (Phase 12)
+- [x] **AuthModal logo + per-card delete** — app logo in the auth header, per-card trash button (top-right, hover-revealed) with confirm modal on the dashboard (2026-09-05)
 - [ ] Google Cloud Run deploy — switch back when you have a Visa/Mastercard
 - [ ] Cloud Tasks queue (production-grade queueing)
 - [ ] Secret Manager + custom domain (production hardening)
@@ -442,6 +443,35 @@ PRs welcome. Please:
 MIT — see [`LICENSE`](LICENSE).
 
 ## 📝 Changelog
+
+### AuthModal logo + per-card delete (2026-09-05)
+
+UI-only polish. No backend, worker, or schema changes.
+
+**AuthModal logo**
+- Replace the `Sparkles` icon header with the app logo
+  (`/android-chrome-192x192.png`) wrapped in a `primary → secondary`
+  gradient ring. Glass inner surface so the logo pops on both light
+  and dark themes. Drop the now-unused `Sparkles` import.
+
+**Dashboard per-card delete**
+- `DashboardCard` is now stateful and owns its delete modal +
+  `isDeleting` state. Trash button: top-right of the 9:16 area
+  (`top-3 right-12`, just left of the always-visible reel-count
+  badge at `top-3 right-3` so the two don't overlap), dark glass
+  pill, revealed on hover (`group-hover:opacity-100`).
+- Separate click target (`<button>`, not inside the `<Link>`) with
+  `stopPropagation` so clicking it doesn't navigate to the status
+  page. Reachable via keyboard (`focus:opacity-100`).
+- Confirm modal matches the gallery's delete flow: z-40 (toast
+  layer above), `AlertTriangle` icon, Cancel + red "Yes, Delete"
+  buttons. Shows the filename being deleted. Fires a "Video
+  deleted ✓" toast on success.
+- Uses the same `api.deleteVideo` endpoint as the gallery (tier-1
+  instant kill: original upload + every reel + videos row).
+- Parent `DashboardClient` now exposes a `handleDeleted` callback
+  that drops the row from local state and decrements `total`. No
+  refetch — the DELETE response is the source of truth.
 
 ### Branding (2026-09-05)
 - Added `reel_generator_logo.png` (lightning-bolt + "REEL GENERATOR" wordmark) and 6 sized variants under `frontend/public/` and `frontend/src/app/`
