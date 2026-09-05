@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertCircle, AlertTriangle, Loader2, Trash2 } from "lucide-react";
+import { AlertCircle, AlertTriangle, Loader2, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -8,7 +8,6 @@ import { useEffect, useState } from "react";
 import AppShell from "@/components/AppShell";
 import { ReelCard } from "@/components/ReelCard";
 import { Skeleton } from "@/components/Skeleton";
-import { EmptyState } from "@/components/EmptyState";
 import { useToast } from "@/components/Toast";
 import { api, type Reel } from "@/lib/api";
 import { supabase } from "@/lib/supabase";
@@ -24,6 +23,11 @@ export default function GalleryClient() {
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  // Phase 12 PR 6: "Generate New Reels" action lives here on the
+  // gallery page (was per-card on the dashboard pre-PR5). Local
+  // `generating` flag prevents double-submit; backend's 409 guard on
+  // /videos/{id}/process is the safety net.
+  const [isGenerating, setIsGenerating] = useState(false);
   const [authChecked, setAuthChecked] = useState(false);
   const [expiresAt, setExpiresAt] = useState<Date | null>(null);
   const [now, setNow] = useState<Date>(() => new Date());
@@ -124,12 +128,32 @@ export default function GalleryClient() {
     }
   };
 
+  // Phase 12 PR 6: enqueue a fresh generation for this video. Same
+  // flow as the old per-card dashboard button — backend POSTs to
+  // /videos/{id}/process, worker picks it up, status page polls.
+  const handleGenerate = async () => {
+    if (!videoId || isGenerating) return;
+    setIsGenerating(true);
+    try {
+      await api.processVideo(videoId);
+      success("Generating new reels! Redirecting…");
+      setTimeout(() => {
+        router.push(`/upload/status?videoId=${videoId}`);
+      }, 700);
+    } catch (err) {
+      const msg =
+        err instanceof Error ? err.message : "Could not start generation";
+      toastError(msg);
+      setIsGenerating(false);
+    }
+  };
+
   if (!authChecked) {
     return (
       <AppShell>
         <div className="min-h-[60vh] flex flex-col items-center justify-center p-6">
           <Loader2 className="animate-spin text-primary" size={32} />
-          <p className="text-gray-400 text-sm mt-3">Checking session…</p>
+          <p className="text-text-muted text-sm mt-3">Checking session…</p>
         </div>
       </AppShell>
     );
@@ -158,7 +182,7 @@ export default function GalleryClient() {
         <div className="flex justify-between items-start gap-4 mb-10 flex-wrap">
           <div>
             <h1 className="text-2xl sm:text-4xl font-bold">Your Viral Reels</h1>
-            <p className="text-gray-400 mt-2 text-sm">
+            <p className="text-text-muted mt-2 text-sm">
               Download your clips and share them with the world!
             </p>
             {expiresAt && (() => {
@@ -179,13 +203,30 @@ export default function GalleryClient() {
               );
             })()}
           </div>
-          <button
-            onClick={() => setShowDeleteModal(true)}
-            className="bg-white/10 hover:bg-red-500/20 text-white border border-white/10 hover:border-red-500/50 px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2"
-          >
-            <Trash2 size={16} />
-            Finish &amp; Clear Session
-          </button>
+          <div className="flex items-center gap-2 flex-wrap">
+            {/* Phase 12 PR 6: always reachable "Generate New Reels"
+                action. Visible whether the video already has reels
+                (regenerate) or has none (kick off first generation). */}
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="bg-gradient-to-r from-primary to-secondary text-white px-5 py-2.5 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity flex items-center gap-2 disabled:opacity-60"
+            >
+              {isGenerating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              {isGenerating ? "Starting…" : "Generate New Reels"}
+            </button>
+            <button
+              onClick={() => setShowDeleteModal(true)}
+              className="bg-black/10 hover:bg-red-500/20 text-text border border-border hover:border-red-500/50 px-5 py-2.5 rounded-full text-sm font-medium transition-all flex items-center gap-2"
+            >
+              <Trash2 size={16} />
+              Finish &amp; Clear Session
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -193,22 +234,42 @@ export default function GalleryClient() {
         ) : fetchError ? (
           <div className="text-center py-20">
             <AlertCircle size={48} className="mx-auto text-red-400 mb-4" />
-            <p className="text-xl text-gray-400 mb-6">{fetchError}</p>
+            <p className="text-xl text-text-muted mb-6">{fetchError}</p>
             <Link
               href="/dashboard"
-              className="inline-block bg-white/5 hover:bg-white/10 border border-white/10 px-6 py-3 rounded-full font-medium transition-all"
+              className="inline-block bg-black/5 hover:bg-black/10 border border-border px-6 py-3 rounded-full font-medium transition-all"
             >
               Back to Dashboard
             </Link>
           </div>
         ) : reels.length === 0 ? (
-          <EmptyState
-            icon="🎞️"
-            title="No reels yet"
-            body="Your video may still be processing — head back to the status page."
-            ctaHref={`/upload/status?videoId=${videoId}`}
-            ctaLabel="Check Status"
-          />
+          // Phase 12 PR 6: when a user lands on the gallery for a
+          // video that has zero reels yet, the primary CTA is now
+          // "Generate New Reels" (inline button). We don't reuse the
+          // EmptyState component here because it only supports a link
+          // CTA, not an action that needs `handleGenerate`.
+          <div className="text-center py-20">
+            <div className="text-5xl mb-4">🎞️</div>
+            <h3 className="text-xl font-semibold text-text mb-2">
+              No reels yet
+            </h3>
+            <p className="text-sm text-text-muted mb-6 max-w-md mx-auto">
+              Your video may still be processing. Click below to start a
+              fresh generation — it usually takes a couple of minutes.
+            </p>
+            <button
+              onClick={handleGenerate}
+              disabled={isGenerating}
+              className="bg-gradient-to-r from-primary to-secondary text-white px-6 py-3 rounded-full text-sm font-semibold hover:opacity-90 transition-opacity inline-flex items-center gap-2 disabled:opacity-60"
+            >
+              {isGenerating ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <Sparkles size={16} />
+              )}
+              {isGenerating ? "Starting…" : "Generate New Reels"}
+            </button>
+          </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
             {reels.map((reel, idx) => (
@@ -230,13 +291,13 @@ export default function GalleryClient() {
           aria-modal="true"
           className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-toast-in"
         >
-          <div className="bg-dark border border-white/10 w-full max-w-md rounded-3xl p-8 shadow-2xl">
+          <div className="bg-bg border border-border w-full max-w-md rounded-3xl p-8 shadow-2xl">
             <div className="text-center mb-6">
               <div className="inline-flex p-4 rounded-full bg-red-500/10 text-red-500 mb-4">
                 <AlertTriangle size={40} />
               </div>
               <h2 className="text-2xl font-bold mb-2">Are you sure?</h2>
-              <p className="text-gray-400 text-sm">
+              <p className="text-text-muted text-sm">
                 Please download and share your reels right now! To protect your privacy, your
                 original video and all generated reels will be permanently deleted.
               </p>
@@ -246,7 +307,7 @@ export default function GalleryClient() {
               <button
                 onClick={() => setShowDeleteModal(false)}
                 disabled={isDeleting}
-                className="flex-1 py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-white/10 font-medium transition-all disabled:opacity-50"
+                className="flex-1 py-3 rounded-xl bg-black/5 hover:bg-black/10 border border-border font-medium transition-all disabled:opacity-50"
               >
                 Cancel
               </button>
@@ -269,7 +330,7 @@ function GallerySkeleton() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 sm:gap-8">
       {[0, 1, 2, 3, 4, 5].map((i) => (
-        <div key={i} className="bg-white/5 border border-white/10 rounded-3xl overflow-hidden">
+        <div key={i} className="bg-black/5 border border-border rounded-3xl overflow-hidden">
           <Skeleton height={0} className="aspect-[9/16] w-full" />
           <div className="p-4">
             <Skeleton height={14} width="60%" />
