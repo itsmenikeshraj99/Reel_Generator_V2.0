@@ -7,7 +7,7 @@
  * - New "Full name" field on sign-up (optional, threaded into
  *   user.user_metadata.full_name via signUp options.data).
  * - Glass surface: bg-surface/80 backdrop-blur-2xl + gradient border feel
- *   via the inner Sparkles icon header.
+ *   via the inner logo + gradient ring.
  * - 2-column OAuth grid (saves vertical space).
  * - Color tokens for borders/text so it themes correctly with the
  *   day/night toggle introduced in PR 2/3.
@@ -21,7 +21,7 @@
  */
 
 import { useState } from "react";
-import { Loader2, Lock, Mail, Sparkles, User, X } from "lucide-react";
+import { Loader2, Lock, Mail, User, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 
@@ -143,10 +143,18 @@ const AuthModal = ({
         </button>
 
         <div className="p-8">
-          {/* Header: gradient Sparkles icon + title + subhead */}
+          {/* Header: app logo on a gradient ring + title + subhead */}
           <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-gradient-to-br from-primary/20 to-secondary/20 mb-4">
-              <Sparkles className="text-secondary" size={24} />
+            <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gradient-to-br from-primary to-secondary p-[2px] mb-4">
+              <div className="w-full h-full rounded-full bg-surface flex items-center justify-center overflow-hidden">
+                <img
+                  src="/android-chrome-192x192.png"
+                  alt="Reel Generator"
+                  width={48}
+                  height={48}
+                  className="rounded-full"
+                />
+              </div>
             </div>
             <h2
               id="auth-modal-title"

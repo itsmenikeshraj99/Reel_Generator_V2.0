@@ -32,7 +32,15 @@
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { Loader2, RefreshCw, Upload, AlertCircle, Film } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Film,
+  Loader2,
+  RefreshCw,
+  Trash2,
+  Upload,
+} from "lucide-react";
 
 import AppShell from "@/components/AppShell";
 import { EmptyState } from "@/components/EmptyState";
@@ -111,6 +119,16 @@ export default function DashboardClient() {
       setLoading(false);
     }
   }, [router, toastError]);
+
+  // Drop a video from the local list after a successful per-card delete.
+  // We don't refetch — the DELETE response is the source of truth.
+  const handleDeleted = useCallback((videoId: string) => {
+    setVideos((prev) => {
+      if (!prev) return prev;
+      return prev.filter((v) => v.id !== videoId);
+    });
+    setTotal((prev) => Math.max(0, prev - 1));
+  }, []);
 
   // Auth check on mount
   useEffect(() => {
@@ -215,7 +233,11 @@ export default function DashboardClient() {
           // Grid
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {videos.map((v) => (
-              <DashboardCard key={v.id} video={v} />
+              <DashboardCard
+                key={v.id}
+                video={v}
+                onDeleted={handleDeleted}
+              />
             ))}
           </div>
         )}
@@ -226,9 +248,18 @@ export default function DashboardClient() {
 
 interface DashboardCardProps {
   video: VideoListItem;
+  /**
+   * Called after a successful delete so the parent can drop this row
+   * from its `videos` state without a refetch.
+   */
+  onDeleted: (videoId: string) => void;
 }
 
-function DashboardCard({ video }: DashboardCardProps) {
+function DashboardCard({ video, onDeleted }: DashboardCardProps) {
+  const { success: toastSuccess, error: toastError } = useToast();
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const badge = STATUS_BADGE[video.status] ?? {
     label: video.status,
     classes: "bg-black/5 text-text-muted border-border",
@@ -236,10 +267,26 @@ function DashboardCard({ video }: DashboardCardProps) {
   const hasReels = video.reel_count > 0;
   const isProcessing = video.status === "PROCESSING";
 
+  // Re-uses the same tier-1 instant-kill endpoint the gallery uses:
+  // backend deletes the original upload (videos.gcs_uri), every reel's
+  // storage object, and the videos row (cascade clears the rest).
+  const handleDelete = async () => {
+    setIsDeleting(true);
+    try {
+      await api.deleteVideo(video.id);
+      toastSuccess("Video deleted ✓");
+      setShowDeleteModal(false);
+      onDeleted(video.id);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Could not delete video";
+      toastError(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
-    <div
-      className="group rounded-2xl bg-black/[0.03] border border-border hover:border-text/15 hover:bg-black/[0.05] transition-all overflow-hidden"
-    >
+    <div className="group rounded-2xl bg-black/[0.03] border border-border hover:border-text/15 hover:bg-black/[0.05] transition-all overflow-hidden">
       {/* 9:16 visual placeholder — clickable to status page */}
       <Link
         href={`/upload/status?videoId=${video.id}`}
@@ -272,6 +319,24 @@ function DashboardCard({ video }: DashboardCardProps) {
             {video.last_stage}
           </div>
         )}
+
+        {/* Per-card delete — top-right corner, sits above the reel-count
+            badge. The button is a separate click target (not inside the
+            <Link>) so clicking it doesn't navigate to the status page.
+            Revealed on hover so the cards stay clean by default. */}
+        <button
+          type="button"
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setShowDeleteModal(true);
+          }}
+          aria-label={`Delete ${video.filename}`}
+          title="Delete video"
+          className="absolute bottom-3 right-3 p-2 rounded-full bg-black/60 backdrop-blur text-white opacity-0 group-hover:opacity-100 hover:bg-red-500/80 focus:opacity-100 transition-all"
+        >
+          <Trash2 size={14} />
+        </button>
       </Link>
 
       {/* Footer */}
@@ -300,6 +365,50 @@ function DashboardCard({ video }: DashboardCardProps) {
           Reels
         </Link>
       </div>
+
+      {showDeleteModal && (
+        // Same shape as the gallery's delete modal so the two flows feel
+        // identical. z-40 keeps the toast layer (z-100) on top.
+        <div
+          role="dialog"
+          aria-modal="true"
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-toast-in"
+        >
+          <div className="bg-bg border border-border w-full max-w-md rounded-3xl p-8 shadow-2xl">
+            <div className="text-center mb-6">
+              <div className="inline-flex p-4 rounded-full bg-red-500/10 text-red-500 mb-4">
+                <AlertTriangle size={40} />
+              </div>
+              <h2 className="text-2xl font-bold mb-2">Delete this video?</h2>
+              <p className="text-text-muted text-sm">
+                <span className="font-medium text-text">{video.filename}</span> and
+                all of its generated reels will be permanently deleted. This
+                action cannot be undone.
+              </p>
+            </div>
+
+            <div className="flex gap-4">
+              <button
+                onClick={() => setShowDeleteModal(false)}
+                disabled={isDeleting}
+                type="button"
+                className="flex-1 py-3 rounded-xl bg-black/5 hover:bg-black/10 border border-border font-medium transition-all disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={isDeleting}
+                type="button"
+                className="flex-1 py-3 rounded-xl bg-red-500 hover:bg-red-600 text-white font-bold transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {isDeleting && <Loader2 className="animate-spin" size={16} />}
+                {isDeleting ? "Deleting…" : "Yes, Delete"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
