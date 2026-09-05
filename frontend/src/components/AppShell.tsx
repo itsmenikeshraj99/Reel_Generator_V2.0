@@ -21,6 +21,7 @@ import { LogOut, Menu, X } from "lucide-react";
 
 import { supabase } from "@/lib/supabase";
 import { useToast } from "@/components/Toast";
+import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/cn";
 
 interface AppShellProps {
@@ -33,6 +34,23 @@ const NAV_LINKS: Array<{ href: string; label: string }> = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/upload", label: "Upload" },
 ];
+
+// Phase 12 PR 4: read a friendly name from Supabase user_metadata.
+// Order: full_name (set on signup with the new name field, or auto-
+// populated by Google/GitHub OAuth) → name (OAuth alt) → email
+// local-part → empty. The `title` attribute on the rendered span still
+// shows the full email so the user can confirm which account is active.
+function displayName(user: User | null): string {
+  if (!user) return "";
+  const meta = (user.user_metadata ?? {}) as {
+    full_name?: string;
+    name?: string;
+  };
+  const fromMeta = (meta.full_name || meta.name || "").trim();
+  if (fromMeta) return fromMeta;
+  const email = user.email || "";
+  return email.split("@")[0] || email;
+}
 
 export function AppShell({ children, showNav = true }: AppShellProps) {
   const router = useRouter();
@@ -93,9 +111,9 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
   }, [user, success]);
 
   return (
-    <div className="min-h-screen bg-dark text-white flex flex-col">
+    <div className="min-h-screen bg-bg text-text flex flex-col">
       {showNav && (
-        <nav className="sticky top-0 z-30 bg-dark/80 backdrop-blur-md border-b border-white/5">
+        <nav className="sticky top-0 z-30 bg-bg/80 backdrop-blur-md border-b border-border">
           <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
             <Link
               href="/"
@@ -125,8 +143,8 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
                     className={cn(
                       "px-4 py-2 rounded-full text-sm font-medium transition-colors",
                       active
-                        ? "bg-white/10 text-white"
-                        : "text-gray-400 hover:text-white hover:bg-white/5",
+                        ? "bg-black/10 text-text"
+                        : "text-text-muted hover:text-text hover:bg-black/5",
                     )}
                   >
                     {link.label}
@@ -137,14 +155,18 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
 
             {/* Right side: sign in / out */}
             <div className="hidden md:flex items-center gap-3">
+              <ThemeToggle />
               {user ? (
                 <>
-                  <span className="text-xs text-gray-500 max-w-[180px] truncate">
-                    {user.email}
+                  <span
+                    className="text-xs text-text-subtle max-w-[180px] truncate"
+                    title={user.email ?? undefined}
+                  >
+                    {displayName(user)}
                   </span>
                   <button
                     onClick={handleSignOut}
-                    className="text-sm text-gray-400 hover:text-white transition-colors flex items-center gap-1.5"
+                    className="text-sm text-text-muted hover:text-text transition-colors flex items-center gap-1.5"
                     aria-label="Sign out"
                   >
                     <LogOut size={14} />
@@ -154,7 +176,7 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
               ) : (
                 <Link
                   href="/"
-                  className="text-sm text-gray-400 hover:text-white transition-colors"
+                  className="text-sm text-text-muted hover:text-text transition-colors"
                 >
                   Sign In
                 </Link>
@@ -164,7 +186,7 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
             {/* Mobile hamburger */}
             <button
               onClick={() => setDrawerOpen(true)}
-              className="md:hidden p-2 -mr-2 text-gray-400 hover:text-white"
+              className="md:hidden p-2 -mr-2 text-text-muted hover:text-text"
               aria-label="Open menu"
             >
               <Menu size={22} />
@@ -186,20 +208,23 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
             aria-hidden="true"
           />
           <aside
-            className="absolute right-0 top-0 bottom-0 w-72 max-w-[85vw] bg-dark border-l border-white/10 p-6 flex flex-col gap-6 shadow-2xl"
+            className="absolute right-0 top-0 bottom-0 w-72 max-w-[85vw] bg-bg border-l border-border p-6 flex flex-col gap-6 shadow-2xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between">
-              <span className="text-sm font-semibold text-gray-400 uppercase tracking-wider">
+              <span className="text-sm font-semibold text-text-muted uppercase tracking-wider">
                 Menu
               </span>
-              <button
-                onClick={() => setDrawerOpen(false)}
-                className="p-1 text-gray-400 hover:text-white"
-                aria-label="Close menu"
-              >
-                <X size={20} />
-              </button>
+              <div className="flex items-center gap-1">
+                <ThemeToggle />
+                <button
+                  onClick={() => setDrawerOpen(false)}
+                  className="p-1 text-text-muted hover:text-text"
+                  aria-label="Close menu"
+                >
+                  <X size={20} />
+                </button>
+              </div>
             </div>
 
             <div className="flex flex-col gap-1">
@@ -213,8 +238,8 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
                     className={cn(
                       "px-4 py-3 rounded-xl text-sm font-medium transition-colors",
                       active
-                        ? "bg-white/10 text-white"
-                        : "text-gray-300 hover:text-white hover:bg-white/5",
+                        ? "bg-black/10 text-text"
+                        : "text-text-muted hover:text-text hover:bg-black/5",
                     )}
                   >
                     {link.label}
@@ -223,15 +248,18 @@ export function AppShell({ children, showNav = true }: AppShellProps) {
               })}
             </div>
 
-            <div className="mt-auto pt-6 border-t border-white/10">
+            <div className="mt-auto pt-6 border-t border-border">
               {user ? (
                 <>
-                  <p className="text-xs text-gray-500 mb-3 truncate">
-                    {user.email}
+                  <p
+                    className="text-xs text-text-subtle mb-3 truncate"
+                    title={user.email ?? undefined}
+                  >
+                    {displayName(user)}
                   </p>
                   <button
                     onClick={handleSignOut}
-                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-sm text-gray-200"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-black/5 hover:bg-black/10 text-sm text-text"
                   >
                     <LogOut size={14} />
                     Sign Out
