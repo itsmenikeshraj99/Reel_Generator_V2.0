@@ -9,31 +9,36 @@ load_dotenv()
 
 # Models we accept in GEMINI_MODEL (primary). Everything in the fallback chain
 # is also valid as a primary.
+#
+# NOTE: As of Sept 2026, Google has restricted gemini-2.5-pro and
+# gemini-3.1-pro-preview to paid tiers only (free tier returns 429
+# RESOURCE_EXHAUSTED with limit=0). We restrict the worker to the
+# flash family + the *-latest aliases that map to currently-available
+# free-tier models. The 3.x "-flash" variants are sometimes unstable
+# (400 INVALID_ARGUMENT on long videos), so we still list 2.5-flash
+# first as a safety net.
 _PRIMARY_GEMINI_MODELS: List[str] = [
-    "gemini-3.1-flash-lite",   # cheapest, fastest, frontier-class
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",        # smarter but more expensive
-    "gemini-3.1-pro-preview",  # highest quality
-    "gemini-2.5-pro",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
-    "gemini-2.5-flash",
+    "gemini-2.5-flash",           # confirmed working on free tier
+    "gemini-flash-lite-latest",   # current stable flash-lite
+    "gemini-flash-latest",        # current stable flash
     "gemini-2.5-flash-lite",
-    "gemini-flash-latest",
-    "gemini-pro-latest",
-    "gemini-3-flash",
-    "gemini-3-flash-preview",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
 ]
 
 # Fallback chain used by the worker when the primary fails. Order matters —
 # first = best fit, last = most expensive fallback.
 DEFAULT_FALLBACK_CHAIN: List[str] = [
-    "gemini-3.1-flash-lite",
-    "gemini-3.5-flash-lite",
-    "gemini-3.8-flash",
-    "gemini-3.1-pro-preview",
     "gemini-2.5-flash",
-    "gemini-2.5-pro",
+    "gemini-flash-lite-latest",
+    "gemini-flash-latest",
+    "gemini-2.5-flash-lite",
+    "gemini-3.1-flash-lite",
+    "gemini-3.1-flash-lite-preview",
+    "gemini-3.5-flash-lite",
+    "gemini-3.5-flash",
 ]
 
 
