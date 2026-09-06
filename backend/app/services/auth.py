@@ -1,16 +1,20 @@
-"""Supabase JWT verification for FastAPI dependencies.
+"""Supabase JWT verification (ES256 via JWKS) for FastAPI dependencies.
 
-The backend uses the service_role key for DB queries (which bypasses RLS), so we MUST
+The backend uses the service_role key for DB queries (bypasses RLS), so we MUST
 verify the caller's identity ourselves on every request. We do this by accepting
-`Authorization: Bearer <jwt>` and asking Supabase to validate it via `auth.get_user()`.
+`Authorization: Bearer <jwt>` and verifying the ES256 signature against the
+public key fetched from Supabase's JWKS endpoint.
 """
+import logging
 from dataclasses import dataclass
 from typing import Optional
 
+import jwt
 from fastapi import Depends, Header, HTTPException, status
-from supabase import Client
 
-from app.services.supabase import supabase
+from app.services.jwt_verifier import verify_jwt
+
+logger = logging.getLogger("auth")
 
 
 @dataclass
@@ -41,24 +45,24 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> CurrentUser
         )
 
     try:
-        # Supabase validates signature + expiry + audience
-        result = supabase.auth.get_user(token)
-    except Exception as exc:  # noqa: BLE001
+        claims = verify_jwt(token)
+    except jwt.PyJWTError as exc:
+        logger.warning("JWT verification failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
 
-    if not result or not getattr(result, "user", None):
+    sub = claims.get("sub")
+    if not sub:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid or expired token",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-    user = result.user
-    return CurrentUser(id=str(user.id), email=getattr(user, "email", None))
+    return CurrentUser(id=str(sub), email=claims.get("email"))
 
 
 def require_user_match(path_user_id: str, current: CurrentUser = Depends(get_current_user)) -> CurrentUser:

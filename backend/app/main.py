@@ -26,6 +26,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:  # noqa: BLE001
         logger.error("Supabase connectivity check FAILED: %s", exc)
         # We don't raise — the app should still start so /health responds and logs show the issue.
+
+    # Pre-warm JWKS cache so the first authenticated request doesn't pay the HTTP fetch.
+    try:
+        from app.services.jwt_verifier import _get_jwks_client
+
+        _get_jwks_client()
+        logger.info("JWKS pre-warmed.")
+    except Exception as exc:  # noqa: BLE001
+        logger.error("JWKS pre-warm FAILED: %s", exc)
+
     yield
     logger.info("Shutting down.")
 
