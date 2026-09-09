@@ -13,32 +13,33 @@ load_dotenv()
 # NOTE: As of Sept 2026, Google has restricted gemini-2.5-pro and
 # gemini-3.1-pro-preview to paid tiers only (free tier returns 429
 # RESOURCE_EXHAUSTED with limit=0). We restrict the worker to the
-# flash family + the *-latest aliases that map to currently-available
-# free-tier models. The 3.x "-flash" variants are sometimes unstable
-# (400 INVALID_ARGUMENT on long videos), so we still list 2.5-flash
-# first as a safety net.
+# confirmed-free-tier flash models. The 3.x "-flash" variants are sometimes
+# unstable (400 INVALID_ARGUMENT on long videos), so we still list 2.5-flash
+# first as a safety net. Only models confirmed to exist and work on free tier
+# are listed below.
+#
+# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
+# gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.1-flash-lite.
+# Kept only: gemini-2.5-flash, gemini-flash-lite-latest, gemini-flash-latest,
+# gemini-2.5-flash-lite (listed but known to be unstable on long videos).
 _PRIMARY_GEMINI_MODELS: List[str] = [
     "gemini-2.5-flash",           # confirmed working on free tier
     "gemini-flash-lite-latest",   # current stable flash-lite
     "gemini-flash-latest",        # current stable flash
-    "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
+    "gemini-2.5-flash-lite",     # unstable on long videos, kept for completeness
 ]
 
 # Fallback chain used by the worker when the primary fails. Order matters —
 # first = best fit, last = most expensive fallback.
+#
+# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
+# gemini-3.5-flash, gemini-3.5-flash-lite. Kept only confirmed-free-tier
+# models that have existed in the API.
 DEFAULT_FALLBACK_CHAIN: List[str] = [
     "gemini-2.5-flash",
     "gemini-flash-lite-latest",
     "gemini-flash-latest",
     "gemini-2.5-flash-lite",
-    "gemini-3.1-flash-lite",
-    "gemini-3.1-flash-lite-preview",
-    "gemini-3.5-flash-lite",
-    "gemini-3.5-flash",
 ]
 
 

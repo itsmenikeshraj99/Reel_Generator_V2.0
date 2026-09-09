@@ -7,19 +7,17 @@ from pydantic_settings import BaseSettings
 load_dotenv()
 
 # Models that we know exist in the current Gemini API. Keep this small — validate at startup.
+#
+# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
+# gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.7-flash, gemini-3.6-flash,
+# gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-2.5-pro.
+# Kept only confirmed-free-tier models that have existed in the API.
 _ALLOWED_GEMINI_MODELS: List[str] = [
     # Current stable (verified from ai.google.dev/gemini-api/docs/models, 2026-09)
     "gemini-3.8-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
-    "gemini-3.1-pro-preview",
-    "gemini-3-flash-preview",
-    # Previous generation
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
     "gemini-2.5-flash",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash-lite",
     "gemini-flash-latest",
     "gemini-pro-latest",
     # Aliases

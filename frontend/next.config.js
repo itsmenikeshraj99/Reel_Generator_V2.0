@@ -15,6 +15,8 @@ const connectSrc = [
   "wss://*.supabase.co",
   "https://*.googleapis.com",
   "ws://localhost:*", // HMR in dev
+  "http://localhost:8000",
+  "http://127.0.0.1:8000" // HMR in dev
 ];
 
 const mediaSrc = [
