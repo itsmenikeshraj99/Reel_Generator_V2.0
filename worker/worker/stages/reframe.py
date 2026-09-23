@@ -437,7 +437,7 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
                     # (1920-1080)/2 = 420.
                     x_off = 0
                     y_off = 0
-                    pad_y = (TARGET_H - TARGET_W) // 2  # 420 for 1080x1920
+                    pad_y = (TARGET_H - TARGET_W) // 2  # 280 for 720x1280
                     scene_vf = (
                         f"crop={cw}:{ch}:{x_off}:{y_off},"
                         f"scale={TARGET_W}:{TARGET_H}:force_original_aspect_ratio=decrease,"

@@ -8,6 +8,15 @@ Two parallel forms:
      by Gemini on the Python side (so we keep strong guarantees like
      `end_time > start_time` and minimum segment/total durations).
 
+IMPORTANT — supported response_schema fields only:
+  Gemini's structured-output schema only supports a specific subset of
+  JSON Schema: anyOf, enum, format, items, maximum, maxItems, minimum,
+  minItems, nullable, properties, propertyOrdering, required. Notably,
+  `minLength` / `maxLength` are NOT supported and can make the whole
+  request come back as `400 INVALID_ARGUMENT` on every model. Do not add
+  them back here — string length limits are already enforced on the
+  Python side by the Pydantic models below after the response is parsed.
+
 Duration contract (Phase 8):
   - Each segment must be 15-30 seconds long.
   - Total stitched duration per candidate must be 20-35 seconds.
@@ -39,7 +48,7 @@ MAX_TOTAL_DURATION = 35.0
 TRANSCRIPT_PLAN_SCHEMA_DICT: dict = {
     "type": "object",
     "properties": {
-        "full_transcript": {"type": "string", "minLength": 1},
+        "full_transcript": {"type": "string"},
         # Word-level timestamps: required for caption overlay (Phase 6).
         # Each entry has the spoken text plus the in-video start/end seconds.
         "words": {
@@ -48,7 +57,7 @@ TRANSCRIPT_PLAN_SCHEMA_DICT: dict = {
             "items": {
                 "type": "object",
                 "properties": {
-                    "text": {"type": "string", "minLength": 1},
+                    "text": {"type": "string"},
                     "start": {"type": "number", "minimum": 0},
                     "end": {"type": "number", "minimum": 0},
                 },
@@ -82,8 +91,8 @@ TRANSCRIPT_PLAN_SCHEMA_DICT: dict = {
                                     # rest.
                                     "maximum": 86400,
                                 },
-                                "title": {"type": "string", "minLength": 1, "maxLength": 200},
-                                "reason": {"type": "string", "minLength": 1, "maxLength": 1000},
+                                "title": {"type": "string"},
+                                "reason": {"type": "string"},
                             },
                             "required": ["start_time", "end_time", "title", "reason"],
                         },
@@ -107,7 +116,8 @@ class WordTimestamp(BaseModel):
     @model_validator(mode="after")
     def _end_after_start(self):
         if self.end < self.start:
-            raise ValueError("word end must be >= start")
+            # LLMs occasionally flip start/end; auto-correct to prevent pipeline crash
+            self.start, self.end = self.end, self.start
         return self
 
 
@@ -176,7 +186,7 @@ REVIEW_SCHEMA_DICT: dict = {
     "type": "object",
     "properties": {
         "status": {"type": "string", "enum": ["accepted", "revise"]},
-        "feedback": {"type": "string", "maxLength": 2000},
+        "feedback": {"type": "string"},
         "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
     },
     "required": ["status", "feedback", "overall_score"],
