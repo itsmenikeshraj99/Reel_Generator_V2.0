@@ -21,6 +21,7 @@ node_modules/
 *.log
 *.tmp
 *.bak
+*.env
 
 # Claude Code (local-only config)
 .claude/

@@ -8,20 +8,16 @@ load_dotenv()
 
 # Models that we know exist in the current Gemini API. Keep this small — validate at startup.
 #
-# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
-# gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.7-flash, gemini-3.6-flash,
-# gemini-3.1-pro-preview, gemini-3-flash-preview, gemini-2.5-pro.
-# Kept only confirmed-free-tier models that have existed in the API.
+# NOTE (Sept 2026): gemini-2.0-flash, gemini-1.5-flash, gemini-2.5-flash, and
+# gemini-2.5-flash-lite are all confirmed dead/blocked for new API keys (a
+# live 404 from Google: "no longer available to new users"). Kept in sync
+# with worker/worker/config.py's _PRIMARY_GEMINI_MODELS — update both lists
+# together when Google's lineup changes.
 _ALLOWED_GEMINI_MODELS: List[str] = [
-    # Current stable (verified from ai.google.dev/gemini-api/docs/models, 2026-09)
-    "gemini-3.8-flash",
+    "gemini-3.5-flash",
     "gemini-3.1-flash-lite",
     "gemini-3.5-flash-lite",
-    "gemini-2.5-flash",
-    "gemini-flash-latest",
-    "gemini-pro-latest",
-    # Aliases
-    "gemini-3-flash",
+    "gemini-3.6-flash",
 ]
 
 
@@ -34,7 +30,7 @@ class Settings(BaseSettings):
 
     # Gemini
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-2.5-flash"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
 
     # App
     MAX_VIDEO_SIZE_MB: int = 500
