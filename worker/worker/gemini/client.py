@@ -3,17 +3,20 @@
 Uses the new `google-genai` SDK with structured output (`response_schema`
 + `response_mime_type`) to avoid brittle ```json``` stripping.
 
-Only uses confirmed-free-tier model IDs. Falls back from gemini-2.0-flash
-to gemini-1.5-flash on any retryable failure.
+Only uses confirmed-free-tier model IDs, taken from `settings.gemini_fallback_chain`
+(worker/config.py) so there is a single source of truth for which model IDs are
+currently live. Falls through the chain in order on any retryable failure.
 
 All `generate_content` calls expect `contents` as a list where each element
-is either a `Part` (media reference) or a `Content` object — never nested
-`Content(role="user")` which the Gemini API strictly rejects.
+is either a `Part` (media reference) or a `Content` object. The `prompt`
+text is merged into a single `Content(role="user")` turn alongside those
+parts before the request is sent — never left out and never sent as a
+second, separate user-role Content (which the Gemini API strictly rejects).
 """
 import json
 import logging
 import asyncio
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from google import genai as google_genai
 from google.genai import types as genai_types
@@ -26,13 +29,6 @@ logger = logging.getLogger("gemini_client")
 
 class GeminiResponseInvalid(Exception):
     """Raised when the model returns HTTP 200 but the body is not valid."""
-
-
-# ── Model IDs ──────────────────────────────────────────────────────
-# Confirmed to exist on free tier as of Sept 2026.
-# Never use gemini-3.1-pro-preview, gemini-3.5-flash, etc. — they return 404.
-GEMINI_PRIMARY = "gemini-2.0-flash"
-GEMINI_FALLBACK = "gemini-1.5-flash"
 
 
 # ── Public API ─────────────────────────────────────────────────────
@@ -88,10 +84,11 @@ class GeminiClient:
         """Generate content with multi-model fallback.
 
         Args:
-            contents: List of Part/Content objects. Must NOT contain
-                      nested Content(role="user") — the SDK adds one
-                      automatically below.
-            prompt: Text prompt to append.
+            contents: List of Part/Content objects (media references,
+                      etc.). The `prompt` text is always merged into
+                      this list as the final text Part of a single
+                      Content(role="user") turn — it is never dropped.
+            prompt: Instruction text sent to the model alongside `contents`.
             response_schema: Flat JSON-Schema dict for structured output.
 
         Returns:
@@ -106,15 +103,34 @@ class GeminiClient:
             config["response_mime_type"] = "application/json"
             config["response_schema"] = response_schema
 
+        # Build the actual request contents. `contents` may hold bare
+        # Part objects (media references) and/or Content objects passed
+        # by the caller — but the instruction `prompt` text was
+        # previously NEVER included in the request at all (the SDK does
+        # NOT append it automatically, despite what the old comment
+        # here claimed). A request with only a media Part and no text
+        # instructions is rejected by several models as
+        # 400 INVALID_ARGUMENT. Merge everything into a single
+        # Content(role="user") turn so every model gets the full
+        # media + instructions payload.
+        parts: List[Any] = []
+        for item in contents:
+            if isinstance(item, genai_types.Content):
+                parts.extend(item.parts or [])
+            else:
+                parts.append(item)
+        parts.append(genai_types.Part(text=prompt))
+        full_contents = [genai_types.Content(role="user", parts=parts)]
+
         last_exc: Optional[Exception] = None
 
-        for model_id in [GEMINI_PRIMARY, GEMINI_FALLBACK]:
+        for model_id in settings.gemini_fallback_chain:
             try:
                 logger.info("Gemini call using model %s", model_id)
 
                 response = self.client.models.generate_content(
                     model=model_id,
-                    contents=contents,          # passed as-is; SDK appends prompt
+                    contents=full_contents,
                     config=config or None,
                 )
 

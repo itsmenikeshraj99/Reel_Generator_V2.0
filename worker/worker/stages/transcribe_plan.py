@@ -1,8 +1,10 @@
 """Stage 2 — Gemini Call #1: transcript + edit plan candidates.
 
 Uses the new google-genai SDK with structured output (`response_schema`
-+ `response_mime_type`) to avoid brittle ```json``` stripping. Only uses
-confirmed-free-tier models: gemini-2.0-flash primary, gemini-1.5-flash fallback.
++ `response_mime_type`) to avoid brittle ```json``` stripping. Model IDs come
+from `settings.gemini_fallback_chain` (worker/config.py) — the single source
+of truth for which Gemini model IDs are currently live — instead of being
+hardcoded here.
 
 Error handling prints the exact request payload on 400 so we can inspect
 what the API rejected.
@@ -15,18 +17,13 @@ from typing import Any, Dict, List
 from google import genai as google_genai
 from google.genai import types as genai_types
 
+from worker.config import settings
 from worker.gemini.client import gemini_client
 from worker.gemini.prompts import TRANSCRIPTION_PLANNING_PROMPT
 from worker.gemini.schemas import TRANSCRIPT_PLAN_SCHEMA_DICT, TranscriptPlanResponse
 from worker.services.supabase import supabase_client
 
 logger = logging.getLogger("stage_transcribe")
-
-
-# ── Model configuration ──────────────────────────────────────────────
-# Confirmed free-tier models only. Do NOT use models that return 404/400.
-GEMINI_PRIMARY = "gemini-2.0-flash"
-GEMINI_FALLBACK = "gemini-1.5-flash"
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
@@ -69,13 +66,13 @@ async def transcribe_and_plan(video_id: str, video_path: str) -> bool:
         video_file = gemini_client.upload_video(video_path)
         video_file = await gemini_client.wait_for_processing(video_file)
 
-        # ── Build contents: bare Part referencing the uploaded file + prompt ──
-        # The SDK expects `contents` as a list where each element is either:
-        #   • a Part (for media references), or
-        #   • a Content object.
-        # We pass a single Part.from_uri() that references the file uploaded
-        # by upload_video(). The SDK will pair it with the prompt parameter
-        # automatically — no nested Content(role="user") objects.
+        # ── Build contents: uploaded file Part + the instruction prompt,
+        # merged into ONE Content(role="user") turn ──
+        # The SDK does NOT automatically attach any prompt text — a prior
+        # version of this code sent only the bare video Part with no
+        # instructions at all, which some models silently mishandled and
+        # others rejected outright with 400 INVALID_ARGUMENT. Both the
+        # media and the instructions must travel in the same user turn.
         #
         # CRITICAL: video_file.uri from upload_video() is a relative path like
         # "files/ABC123". Part.from_uri() requires a canonical URL, so we
@@ -92,13 +89,23 @@ async def transcribe_and_plan(video_id: str, video_path: str) -> bool:
         # ── API call with fallback chain ─────────────────────────────
         last_exc: Exception | None = None
 
-        for model_id in [GEMINI_PRIMARY, GEMINI_FALLBACK]:
+        for model_id in settings.gemini_fallback_chain:
             try:
                 logger.info("Gemini call using model %s", model_id)
 
                 response = gemini_client.client.models.generate_content(
                     model=model_id,
-                    contents=[part_video],          # bare Part, no Content wrapper
+                    # Video Part + the full instruction prompt merged into a
+                    # single Content(role="user") turn. A request with only
+                    # the media Part and no text instructions is rejected by
+                    # several models as 400 INVALID_ARGUMENT — the prompt
+                    # must always travel with the media.
+                    contents=[
+                        genai_types.Content(
+                            role="user",
+                            parts=[part_video, genai_types.Part(text=TRANSCRIPTION_PLANNING_PROMPT)],
+                        ),
+                    ],
                     config=genai_types.GenerateContentConfig(
                         response_mime_type="application/json",
                         response_schema=TRANSCRIPT_PLAN_SCHEMA_DICT,
