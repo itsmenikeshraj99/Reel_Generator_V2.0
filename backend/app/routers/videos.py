@@ -2,6 +2,9 @@ import os
 import tempfile
 import uuid
 from datetime import datetime, timedelta, timezone
+import uuid
+
+
 
 from dotenv import load_dotenv
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
@@ -207,13 +210,41 @@ async def process_video(
         expires_at = own.data[0].get("expires_at")
         if expires_at and datetime.now(timezone.utc) > datetime.fromisoformat(expires_at):
             raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
+
+        # --- Fix: Stuck Job Recovery ---
+        # If the video is marked as PROCESSING or there's a RUNNING job, check for staleness.
+        # If stale, we transition it to FAILED to allow this retry.
+        try:
+            job_res = supabase.table("jobs").select("status, updated_at").eq(
+                "video_id", video_id
+            ).order("started_at", desc=True).limit(1).execute()
+
+            if job_res.data:
+                job = job_res.data[0]
+                if job.get("status") == "RUNNING":
+                    updated_at = job.get("updated_at")
+                    if updated_at:
+                        last_update = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                        # Stale threshold: 10 minutes
+                        if datetime.now(timezone.utc) - last_update > timedelta(minutes=10):
+                            logger.info("Stale job detected for %s; marking as FAILED", video_id)
+                            supabase.table("jobs").update({"status": "FAILED"}).eq(
+                                "video_id", video_id, "status", "RUNNING"
+                            ).execute()
+        except Exception as exc:
+            logger.warning("Stale check failed for %s: %s", video_id, exc)
+
         current_status = own.data[0].get("status")
         # Don't allow re-enqueue while a pipeline is already running.
         if current_status == "PROCESSING":
-            raise HTTPException(
-                status_code=409,
-                detail="This video is already being processed. Please wait.",
-            )
+            # Check again if it's still actually RUNNING in the jobs table
+            # (it might have been marked FAILED by the stale check above).
+            job_res = supabase.table("jobs").select("status").eq("video_id", video_id).execute()
+            if job_res.data and job_res.data[0].get("status") == "RUNNING":
+                raise HTTPException(
+                    status_code=409,
+                    detail="This video is already being processed. Please wait.",
+                )
 
         supabase.table("videos").update({"status": "UPLOADED"}).eq("id", video_id).eq(
             "user_id", current.id
@@ -264,6 +295,22 @@ async def get_video_status(
             return {"status": own.data[0]["status"], "stage": None, "error": None}
 
         job = job_res.data[0]
+
+        # --- Fix: Stuck Job Recovery ---
+        if job.get("status") == "RUNNING":
+            updated_at = job.get("updated_at")
+            if updated_at:
+                last_update = datetime.fromisoformat(updated_at.replace("Z", "+00:00"))
+                # Stale threshold: 10 minutes
+                if datetime.now(timezone.utc) - last_update > timedelta(minutes=10):
+                    logger.info("Stale job detected for %s; marking as FAILED", video_id)
+                    supabase.table("jobs").update({"status": "FAILED"}).eq(
+                        "video_id", video_id, "status", "RUNNING"
+                    ).execute()
+                    # Update local state to reflect the change
+                    job = job.copy()
+                    job["status"] = "FAILED"
+
         return {
             "status": job["current_stage"] if job["status"] == "RUNNING" else job["status"],
             "stage": job["current_stage"],
@@ -319,9 +366,22 @@ async def analyze_video(
             prompt = (
                 "Find 3 viral segments. Format: JSON {segments: [{start, end, title, reason}]}"
             )
+            # Video Part + prompt text merged into ONE Content(role="user")
+            # turn. Passing them as two separate list items (`[video_file, prompt]`)
+            # made the SDK create two separate role="user" Content entries with
+            # no "model" turn between them, which the Gemini API rejects as
+            # 400 INVALID_ARGUMENT ("multiturn requests must alternate...").
+            video_part = genai_types.Part.from_uri(
+                file_uri=video_file.uri, mime_type=video_file.mime_type
+            )
             response = gemini_client.models.generate_content(
                 model=_gemini_model_name,
-                contents=[video_file, prompt],
+                contents=[
+                    genai_types.Content(
+                        role="user",
+                        parts=[video_part, genai_types.Part(text=prompt)],
+                    ),
+                ],
             )
         finally:
             if os.path.exists(temp_video_path):
