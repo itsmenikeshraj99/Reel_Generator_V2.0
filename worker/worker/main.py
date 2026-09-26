@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from worker.config import settings
 from worker.pipeline import Pipeline
+from worker.services.supabase import supabase_client
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("worker_main")
@@ -74,8 +76,39 @@ async def process_video(
     _auth: None = Depends(require_worker_secret),
 ):
     logger.info("Accepted process request for video %s", request.video_id)
+
+    # --- Fix: Ghost Job Race Condition ---
+    # Durably initialize job state BEFORE acknowledging success to the backend.
+    try:
+        # 1. Determine if we are resuming a previously failed run
+        resume_stage = "PENDING"
+        try:
+            cur = supabase_client.table("jobs").select("current_stage, status").eq(
+                "video_id", request.video_id
+            ).order("started_at", desc=True).limit(1).execute()
+
+            if cur.data:
+                prior_stage = cur.data[0].get("current_stage")
+                prior_status = cur.data[0].get("status")
+                _RESUMABLE = {"VALIDATING", "TRANSCRIBING_PLANNING", "REVIEWING", "RENDERING"}
+                if prior_stage and prior_stage in _RESUMABLE and prior_status in ("FAILED", "RUNNING"):
+                    resume_stage = prior_stage
+        except Exception as exc:
+            logger.warning("Could not read prior job state for %s: %s", request.video_id, exc)
+            # We proceed with "PENDING" as a fallback
+
+        # 2. Sync upsert to ensure the job exists before response
+        supabase_client.table("jobs").upsert({
+            "video_id": request.video_id,
+            "current_stage": resume_stage,
+            "status": "RUNNING",
+            "last_error": None,
+        }, on_conflict="video_id").execute()
+    except Exception as exc:
+        logger.exception("Failed to initialize job state for %s: %s", request.video_id, exc)
+        raise HTTPException(status_code=500, detail="Internal worker error initializing job state")
+
     # Dispatch to the thread pool so the response returns immediately
-    # and the event loop stays free to accept more /process calls.
     try:
         _EXECUTOR.submit(_run_pipeline_sync, request.video_id)
     except RuntimeError as exc:
