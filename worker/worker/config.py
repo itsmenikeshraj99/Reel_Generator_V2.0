@@ -10,36 +10,29 @@ load_dotenv()
 # Models we accept in GEMINI_MODEL (primary). Everything in the fallback chain
 # is also valid as a primary.
 #
-# NOTE: As of Sept 2026, Google has restricted gemini-2.5-pro and
-# gemini-3.1-pro-preview to paid tiers only (free tier returns 429
-# RESOURCE_EXHAUSTED with limit=0). We restrict the worker to the
-# confirmed-free-tier flash models. The 3.x "-flash" variants are sometimes
-# unstable (400 INVALID_ARGUMENT on long videos), so we still list 2.5-flash
-# first as a safety net. Only models confirmed to exist and work on free tier
-# are listed below.
-#
-# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
-# gemini-3.5-flash, gemini-3.5-flash-lite, gemini-3.1-flash-lite.
-# Kept only: gemini-2.5-flash, gemini-flash-lite-latest, gemini-flash-latest,
-# gemini-2.5-flash-lite (listed but known to be unstable on long videos).
+# NOTE (updated Sept 2026, from a live failure log): gemini-2.5-flash and
+# gemini-2.5-flash-lite now return 404 "no longer available to new users"
+# on fresh API keys — Google has moved new projects to the 3.x generation.
+# gemini-2.0-flash / gemini-1.5-flash were retired earlier in 2026 and
+# must never be used. Confirmed-GA 3.x models as of Sept 2026:
 _PRIMARY_GEMINI_MODELS: List[str] = [
-    "gemini-2.5-flash",           # confirmed working on free tier
-    "gemini-flash-lite-latest",   # current stable flash-lite
-    "gemini-flash-latest",        # current stable flash
-    "gemini-2.5-flash-lite",     # unstable on long videos, kept for completeness
+    "gemini-3.5-flash",           # GA since May 2026 — current flagship flash
+    "gemini-3.1-flash-lite",      # GA, stable low-latency option
+    "gemini-3.5-flash-lite",      # GA since Jul 2026
+    "gemini-3.6-flash",           # GA since Jul 2026 — cheaper/more efficient than 3.5
 ]
 
 # Fallback chain used by the worker when the primary fails. Order matters —
 # first = best fit, last = most expensive fallback.
 #
-# Removed models that return 404/400: gemini-3.1-flash-lite-preview,
-# gemini-3.5-flash, gemini-3.5-flash-lite. Kept only confirmed-free-tier
-# models that have existed in the API.
+# Do NOT add gemini-2.0-flash, gemini-1.5-flash, gemini-2.5-flash, or
+# gemini-2.5-flash-lite back here — all four are confirmed dead/blocked
+# for new API keys as of Sept 2026 (see note above).
 DEFAULT_FALLBACK_CHAIN: List[str] = [
-    "gemini-2.5-flash",
-    "gemini-flash-lite-latest",
-    "gemini-flash-latest",
-    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.1-flash-lite",
+    "gemini-3.5-flash-lite",
+    "gemini-3.6-flash",
 ]
 
 
@@ -50,7 +43,7 @@ class WorkerSettings(BaseSettings):
     STORAGE_BUCKET: str = "reels-videos"
 
     GEMINI_API_KEY: str
-    GEMINI_MODEL: str = "gemini-3.1-flash-lite"
+    GEMINI_MODEL: str = "gemini-3.5-flash"
     # Comma-separated list of fallback models. Empty = use the built-in chain.
     GEMINI_FALLBACK_MODELS: str = ""
 

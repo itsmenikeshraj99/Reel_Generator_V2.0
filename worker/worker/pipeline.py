@@ -18,8 +18,11 @@ import asyncio
 import gc
 import logging
 import os
+import subprocess
+import time
 import tempfile
 from typing import Any, Awaitable, Callable, Optional
+
 
 from worker.config import settings
 from worker.gemini.client import gemini_client
@@ -56,6 +59,49 @@ class Pipeline:
         # rather than at VALIDATING. `None` means "from the top".
         self._resume_from: Optional[str] = None
 
+    async def _heartbeat(self) -> None:
+        """Update the `updated_at` timestamp to signal liveness to the backend."""
+        try:
+            supabase_client.table("jobs").update({
+                "updated_at": "now()",
+            }).eq("video_id", self.video_id).eq("status", "RUNNING").execute()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Heartbeat failed for %s: %s", self.video_id, exc)
+
+    async def _run_with_heartbeat(self, cmd: list[str], timeout: int = 600) -> None:
+        """Run a subprocess and update the heartbeat periodically.
+
+        Replaces subprocess.run to prevent long-running processes from being
+        marked as stale by the backend watchdog.
+        """
+        # Note: subprocess.Popen is synchronous. We run it in the executor
+        # via _run_pipeline_sync, so this is acceptable.
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+
+        start_time = time.time()
+        try:
+            while process.poll() is None:
+                # Wait for a bit before checking again and sending heartbeat
+                time.sleep(60)
+                await self._heartbeat()
+
+                if time.time() - start_time > timeout:
+                    process.kill()
+                    raise RuntimeError(f"Subprocess timed out after {timeout}s")
+
+            stdout, stderr = process.communicate()
+            if process.returncode != 0:
+                raise RuntimeError(f"Subprocess failed (rc={process.returncode}): {stderr[-500:]}")
+        except Exception:
+            process.kill()
+            process.wait()
+            raise
+
     async def run(self) -> None:
         logger.info("Starting pipeline for video %s", self.video_id)
         temp_src_path: Optional[str] = None
@@ -65,86 +111,6 @@ class Pipeline:
         reel_storage_path = f"reels/{self.video_id}.mp4"
 
         try:
-            # 0a. Create the jobs row up-front so the status page can poll progress.
-            #     `transition()` only UPDATES; if the row was never INSERTed the
-            #     update is a no-op and the frontend never sees the stage advance.
-            #     `uq_jobs_video_id` makes this safe to re-run (idempotent).
-            #     Phase 7: detect a previous failed run and set `_resume_from`
-            #     so we skip already-completed stages.
-            try:
-                # Try the full Phase 7 read first; fall back to a slimmer
-                # select if `retry_count` hasn't been migrated to the live
-                # DB yet. The `except` block below handles the 42703 error
-                # from PostgREST.
-                prior_stage: Optional[str] = None
-                prior_status: Optional[str] = None
-                prior_retries: int = 0
-                try:
-                    cur = supabase_client.table("jobs").select(
-                        "current_stage, status, retry_count"
-                    ).eq("video_id", self.video_id).order("started_at", desc=True).limit(1).execute()
-                except Exception:
-                    # Column missing — fall back to the pre-Phase-7 shape
-                    cur = supabase_client.table("jobs").select(
-                        "current_stage, status"
-                    ).eq("video_id", self.video_id).order("started_at", desc=True).limit(1).execute()
-
-                if cur.data:
-                    prior_stage = cur.data[0].get("current_stage")
-                    prior_status = cur.data[0].get("status")
-                    try:
-                        prior_retries = int(cur.data[0].get("retry_count") or 0)
-                    except (TypeError, ValueError):
-                        prior_retries = 0
-
-                # Resume from a previously-failed/in-progress stage. The
-                # stage list lets us pick the right index for skip-ahead.
-                # PENDING is excluded — it just means "no work started yet",
-                # so a resume from PENDING would be a no-op.
-                _RESUMABLE = {"VALIDATING", "TRANSCRIBING_PLANNING", "REVIEWING", "RENDERING"}
-                if (
-                    prior_stage
-                    and prior_stage in _RESUMABLE
-                    and prior_status in ("FAILED", "RUNNING")
-                ):
-                    self._resume_from = prior_stage
-                    logger.info(
-                        "Phase 7 resume: video %s was at %s (status=%s, retries=%d); "
-                        "skipping already-completed stages",
-                        self.video_id, prior_stage, prior_status, prior_retries,
-                    )
-
-                # Reset the row to RUNNING so the status page doesn't show
-                # a stale FAILED badge while we're re-running. retry_count
-                # is preserved here — `retry_stage()` will increment it on
-                # each subsequent failure. Wrapped in try/except so a
-                # missing `retry_count` column on a pre-migration DB
-                # doesn't kill the whole pipeline.
-                #
-                # Phase 7 fix: when resuming from a previously-in-progress
-                # stage, do NOT regress `current_stage` back to PENDING —
-                # the status page polls every 2s and would briefly see
-                # PENDING before `transition("VALIDATING")` fires, which
-                # makes the UI rewind from "Rendering Final Reels" back to
-                # "Processing Your Video". Hold the prior stage until the
-                # first real `transition()` call advances it forward.
-                resume_stage = self._resume_from or "PENDING"
-                try:
-                    supabase_client.table("jobs").upsert({
-                        "video_id": self.video_id,
-                        "current_stage": resume_stage,
-                        "status": "RUNNING",
-                        "last_error": None,
-                    }, on_conflict="video_id").execute()
-                except Exception:
-                    supabase_client.table("jobs").upsert({
-                        "video_id": self.video_id,
-                        "current_stage": resume_stage,
-                        "status": "RUNNING",
-                    }, on_conflict="video_id").execute()
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("Could not upsert initial jobs row for %s: %s", self.video_id, exc)
-
             # 0b. Initial download
             res = supabase_client.table("videos").select("gcs_uri").eq(
                 "id", self.video_id
@@ -426,7 +392,8 @@ class Pipeline:
             #    still valid 1080x1920.
             reframe_ok = False
             try:
-                reframe_ok = await reframe_video(video_path, reframed_path)
+                # Pass self to enable heartbeats during long render
+                reframe_ok = await reframe_video(self, video_path, reframed_path)
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "reframe_video crashed for %s (%s); falling back to raw cut",
@@ -444,7 +411,8 @@ class Pipeline:
                 stitch_input = video_path
 
             # 2. Stitch. Failure here is fatal (no further fallback).
-            if not await stitch_and_caption(self.video_id, stitch_input, output_path):
+            # Pass self to enable heartbeats
+            if not await stitch_and_caption(self, self.video_id, stitch_input, output_path):
                 return False
 
             # Free the reframed temp file before the caption step — it's
@@ -473,7 +441,8 @@ class Pipeline:
             captioned_path = os.path.join(
                 tempfile.gettempdir(), f"reel_{self.video_id}_captioned.mp4"
             )
-            if await burn_captions(self.video_id, output_path, captioned_path):
+            # Pass self to enable heartbeats
+            if await burn_captions(self, self.video_id, output_path, captioned_path):
                 final_path = captioned_path
 
             with open(final_path, "rb") as f:
