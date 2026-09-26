@@ -369,8 +369,9 @@ def _build_filter(
 # Main entry point
 # ----------------------------------------------------------------------------
 
-async def reframe_video(video_path: str, output_path: str) -> bool:
+async def reframe_video(pipeline, video_path: str, output_path: str) -> bool:
     """Reframe source → 9:16 with subject detection + letterbox fallback."""
+
     if not os.path.exists(video_path):
         logger.error("Source video not found: %s", video_path)
         return False
@@ -469,17 +470,10 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
                     clip_path,
                 ]
                 try:
-                    clip_res = subprocess.run(
-                        clip_cmd, capture_output=True, text=True, timeout=600,
-                    )
+                    # Use heartbeat-aware runner
+                    await pipeline._run_with_heartbeat(clip_cmd)
                 except subprocess.TimeoutExpired:
                     logger.error("Scene %d ffmpeg timed out", i)
-                    return False
-                if clip_res.returncode != 0:
-                    logger.error(
-                        "Scene %d ffmpeg failed (rc=%s): %s",
-                        i, clip_res.returncode, clip_res.stderr[-600:],
-                    )
                     return False
                 if not os.path.exists(clip_path) or os.path.getsize(clip_path) < 1024:
                     logger.error("Scene %d clip missing or empty", i)
@@ -505,17 +499,9 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
                 output_path,
             ]
             try:
-                concat_res = subprocess.run(
-                    concat_cmd, capture_output=True, text=True, timeout=300,
-                )
+                await pipeline._run_with_heartbeat(concat_cmd)
             except subprocess.TimeoutExpired:
                 logger.error("Concat ffmpeg timed out")
-                return False
-            if concat_res.returncode != 0:
-                logger.error(
-                    "Concat ffmpeg failed (rc=%s): %s",
-                    concat_res.returncode, concat_res.stderr[-600:],
-                )
                 return False
         finally:
             # Best-effort cleanup of per-scene intermediate files.
@@ -549,17 +535,12 @@ async def reframe_video(video_path: str, output_path: str) -> bool:
             output_path,
         ]
         try:
-            result = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=1800,
-            )
+            result = await pipeline._run_with_heartbeat(cmd)
         except FileNotFoundError as exc:
             logger.error("ffmpeg not installed: %s", exc)
             return False
         except subprocess.TimeoutExpired:
             logger.error("ffmpeg timed out after 1800s for %s", video_path)
-            return False
-        if result.returncode != 0:
-            logger.error("ffmpeg reframe failed (rc=%s): %s", result.returncode, result.stderr[-1200:])
             return False
 
     if not os.path.exists(output_path) or os.path.getsize(output_path) < 1024:
