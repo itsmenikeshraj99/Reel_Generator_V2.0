@@ -174,6 +174,14 @@ class Pipeline:
                     return await self.fail("Skipped RENDERING")
                 reframed_path = os.path.join(tempfile.gettempdir(), f"reframed_{self.video_id}.mp4")
                 output_path = os.path.join(tempfile.gettempdir(), f"reel_{self.video_id}.mp4")
+                # Same filename _stage_render builds internally for the
+                # caption-burned file. Assigning it here (not just inside
+                # _stage_render's own local variable) lets the `finally`
+                # cleanup below actually find and delete it — previously
+                # this outer captioned_path was never reassigned, so the
+                # captioned temp file was silently left on disk after
+                # every successful render.
+                captioned_path = os.path.join(tempfile.gettempdir(), f"reel_{self.video_id}_captioned.mp4")
                 if not await self.retry_stage(
                     "RENDERING",
                     lambda: self._stage_render(temp_src_path, reframed_path, output_path, reel_storage_path),
