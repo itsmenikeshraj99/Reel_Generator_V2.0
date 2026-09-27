@@ -229,8 +229,8 @@ async def process_video(
                         if datetime.now(timezone.utc) - last_update > timedelta(minutes=10):
                             logger.info("Stale job detected for %s; marking as FAILED", video_id)
                             supabase.table("jobs").update({"status": "FAILED"}).eq(
-                                "video_id", video_id, "status", "RUNNING"
-                            ).execute()
+                                "video_id", video_id
+                            ).eq("status", "RUNNING").execute()
         except Exception as exc:
             logger.warning("Stale check failed for %s: %s", video_id, exc)
 
@@ -287,7 +287,7 @@ async def get_video_status(
         raise HTTPException(status_code=403, detail="Link Expired / Session Ended")
 
     try:
-        job_res = supabase.table("jobs").select("current_stage, status, last_error").eq(
+        job_res = supabase.table("jobs").select("current_stage, status, last_error, updated_at").eq(
             "video_id", video_id
         ).order("started_at", desc=True).limit(1).execute()
 
@@ -305,8 +305,8 @@ async def get_video_status(
                 if datetime.now(timezone.utc) - last_update > timedelta(minutes=10):
                     logger.info("Stale job detected for %s; marking as FAILED", video_id)
                     supabase.table("jobs").update({"status": "FAILED"}).eq(
-                        "video_id", video_id, "status", "RUNNING"
-                    ).execute()
+                        "video_id", video_id
+                    ).eq("status", "RUNNING").execute()
                     # Update local state to reflect the change
                     job = job.copy()
                     job["status"] = "FAILED"
