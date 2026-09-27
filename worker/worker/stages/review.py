@@ -77,7 +77,11 @@ async def _regenerate_candidates(
     `RuntimeError: This event loop is already running` on Python 3.10+.
     """
     from worker.gemini.prompts import TRANSCRIPTION_PLANNING_PROMPT
-    from worker.gemini.schemas import TRANSCRIPT_PLAN_SCHEMA_DICT, TranscriptPlanResponse
+    from worker.gemini.schemas import (
+        TRANSCRIPT_PLAN_SCHEMA_DICT,
+        EditPlanCandidate,
+        TranscriptPlanResponse,
+    )
     from worker.services.storage import worker_storage
 
     # The planner needs the video file again. Re-fetch the source path.
@@ -118,6 +122,25 @@ async def _regenerate_candidates(
         response_schema=TRANSCRIPT_PLAN_SCHEMA_DICT,
     )
     data = json.loads(response_text)
+
+    # Validate each candidate independently instead of the whole response at
+    # once — see the matching fix in stages/transcribe_plan.py. A single
+    # candidate breaking the duration rules previously discarded every other,
+    # otherwise-valid regenerated candidate for this revision attempt.
+    raw_candidates = data.get("candidates") or []
+    valid_candidates = []
+    for i, cand in enumerate(raw_candidates):
+        try:
+            valid_candidates.append(EditPlanCandidate(**cand))
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Regenerated candidate %d failed validation (%s); "
+                "dropping it, keeping the rest",
+                i, exc,
+            )
+    if not valid_candidates:
+        raise ValueError("No regenerated candidate satisfies the duration rules")
+    data = {**data, "candidates": [c.model_dump() for c in valid_candidates]}
     plan = TranscriptPlanResponse(**data)
 
     # Replace existing pending candidates so the next reviewer pass works

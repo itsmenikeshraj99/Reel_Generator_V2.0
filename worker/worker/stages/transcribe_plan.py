@@ -20,7 +20,11 @@ from google.genai import types as genai_types
 from worker.config import settings
 from worker.gemini.client import gemini_client
 from worker.gemini.prompts import TRANSCRIPTION_PLANNING_PROMPT
-from worker.gemini.schemas import TRANSCRIPT_PLAN_SCHEMA_DICT, TranscriptPlanResponse
+from worker.gemini.schemas import (
+    TRANSCRIPT_PLAN_SCHEMA_DICT,
+    EditPlanCandidate,
+    TranscriptPlanResponse,
+)
 from worker.services.supabase import supabase_client
 
 logger = logging.getLogger("stage_transcribe")
@@ -123,6 +127,29 @@ async def transcribe_and_plan(video_id: str, video_path: str) -> bool:
                     ) from exc
 
                 # ── Validate with Pydantic model ───────────────────────
+                # Validate each candidate independently instead of the whole
+                # response at once. Previously, TranscriptPlanResponse(**data)
+                # validated every candidate together — a single candidate
+                # breaking the duration rules (Segment/EditPlanCandidate
+                # validators) raised for the ENTIRE response, discarding every
+                # other, otherwise-valid candidate and forcing a jump to the
+                # next model in the fallback chain instead of a simple retry.
+                raw_candidates = data.get("candidates") or []
+                valid_candidates = []
+                for i, cand in enumerate(raw_candidates):
+                    try:
+                        valid_candidates.append(EditPlanCandidate(**cand))
+                    except Exception as exc:  # noqa: BLE001
+                        logger.warning(
+                            "Candidate %d from %s failed validation (%s); "
+                            "dropping it, keeping the rest",
+                            i, model_id, exc,
+                        )
+                if not valid_candidates:
+                    raise GeminiResponseInvalid(
+                        "No candidate in the response satisfies the duration rules"
+                    )
+                data = {**data, "candidates": [c.model_dump() for c in valid_candidates]}
                 plan = TranscriptPlanResponse(**data)
 
                 # ── Persist transcript + word timestamps ───────────────
