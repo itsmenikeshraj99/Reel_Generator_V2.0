@@ -42,15 +42,28 @@ MAX_TOTAL_DURATION = 35.0
 
 
 # ----------------------------------------------------------------------------
-# Transcript + Edit Plan
+# Transcription
 # ----------------------------------------------------------------------------
 
-TRANSCRIPT_PLAN_SCHEMA_DICT: dict = {
+class WordTimestamp(BaseModel):
+    text: str = Field(min_length=1)
+    start: float = Field(ge=0)
+    end: float = Field(ge=0)
+
+    @model_validator(mode="after")
+    def _end_after_start(self):
+        if self.end < self.start:
+            self.start, self.end = self.end, self.start
+        return self
+
+class TranscriptionResponse(BaseModel):
+    full_transcript: str = Field(min_length=1)
+    words: List[WordTimestamp] = Field(default_factory=list)
+
+TRANSCRIPTION_SCHEMA_DICT: dict = {
     "type": "object",
     "properties": {
         "full_transcript": {"type": "string"},
-        # Word-level timestamps: required for caption overlay (Phase 6).
-        # Each entry has the spoken text plus the in-video start/end seconds.
         "words": {
             "type": "array",
             "minItems": 1,
@@ -64,62 +77,14 @@ TRANSCRIPT_PLAN_SCHEMA_DICT: dict = {
                 "required": ["text", "start", "end"],
             },
         },
-        "candidates": {
-            "type": "array",
-            "minItems": 1,
-            "maxItems": 5,
-            "items": {
-                "type": "object",
-                "properties": {
-                    "candidate_index": {"type": "integer", "minimum": 0},
-                    "segments": {
-                        "type": "array",
-                        "minItems": 1,
-                        "maxItems": 8,
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "start_time": {"type": "number", "minimum": 0},
-                                "end_time": {
-                                    "type": "number",
-                                    # The Pydantic validator below also
-                                    # enforces end_time > start_time and
-                                    # end - start in [15, 30]. JSON Schema
-                                    # can only express the upper bound on
-                                    # the difference via "maximum", so we
-                                    # rely on the model validator for the
-                                    # rest.
-                                    "maximum": 86400,
-                                },
-                                "title": {"type": "string"},
-                                "reason": {"type": "string"},
-                            },
-                            "required": ["start_time", "end_time", "title", "reason"],
-                        },
-                    },
-                    "hook_score": {"type": "number", "minimum": 0, "maximum": 1},
-                    "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
-                },
-                "required": ["candidate_index", "segments", "hook_score", "overall_score"],
-            },
-        },
     },
-    "required": ["full_transcript", "words", "candidates"],
+    "required": ["full_transcript", "words"],
 }
 
 
-class WordTimestamp(BaseModel):
-    text: str = Field(min_length=1)
-    start: float = Field(ge=0)
-    end: float = Field(ge=0)
-
-    @model_validator(mode="after")
-    def _end_after_start(self):
-        if self.end < self.start:
-            # LLMs occasionally flip start/end; auto-correct to prevent pipeline crash
-            self.start, self.end = self.end, self.start
-        return self
-
+# ----------------------------------------------------------------------------
+# Candidates
+# ----------------------------------------------------------------------------
 
 class Segment(BaseModel):
     start_time: float = Field(ge=0, description="Start time in seconds (>= 0)")
@@ -137,45 +102,82 @@ class Segment(BaseModel):
     def _min_segment_duration(self):
         dur = self.end_time - self.start_time
         if dur < MIN_SEGMENT_DURATION:
-            raise ValueError(
-                f"Segment duration is {dur:.1f}s but must be at least "
-                f"{MIN_SEGMENT_DURATION:.0f}s (segments shorter than this "
-                f"produce unviewable reels)"
-            )
+            raise ValueError(f"Segment duration {dur:.1f}s < {MIN_SEGMENT_DURATION:.0f}s")
         if dur > MAX_SEGMENT_DURATION:
-            raise ValueError(
-                f"Segment duration is {dur:.1f}s but must be at most "
-                f"{MAX_SEGMENT_DURATION:.0f}s"
-            )
+            raise ValueError(f"Segment duration {dur:.1f}s > {MAX_SEGMENT_DURATION:.0f}s")
         return self
-
 
 class EditPlanCandidate(BaseModel):
     candidate_index: int = Field(ge=0)
     segments: List[Segment] = Field(min_length=1, max_length=8)
+
+class CandidatesResponse(BaseModel):
+    candidates: List[EditPlanCandidate] = Field(min_length=1, max_length=5)
+
+CANDIDATES_SCHEMA_DICT: dict = {
+    "type": "object",
+    "properties": {
+        "candidates": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "candidate_index": {"type": "integer", "minimum": 0},
+                    "segments": {
+                        "type": "array",
+                        "minItems": 1,
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "start_time": {"type": "number", "minimum": 0},
+                                "end_time": {"type": "number", "maximum": 86400},
+                                "title": {"type": "string"},
+                                "reason": {"type": "string"},
+                            },
+                            "required": ["start_time", "end_time", "title", "reason"],
+                        },
+                    },
+                },
+                "required": ["candidate_index", "segments"],
+            },
+        },
+    },
+    "required": ["candidates"],
+}
+
+
+# ----------------------------------------------------------------------------
+# Scoring
+# ----------------------------------------------------------------------------
+
+class CandidateScore(BaseModel):
+    candidate_index: int = Field(ge=0)
     hook_score: float = Field(ge=0, le=1)
     overall_score: float = Field(ge=0, le=1)
 
-    @model_validator(mode="after")
-    def _total_duration_in_range(self):
-        total = sum(s.end_time - s.start_time for s in self.segments)
-        if total < MIN_TOTAL_DURATION:
-            raise ValueError(
-                f"Total stitched duration is {total:.1f}s but must be at "
-                f"least {MIN_TOTAL_DURATION:.0f}s"
-            )
-        if total > MAX_TOTAL_DURATION:
-            raise ValueError(
-                f"Total stitched duration is {total:.1f}s but must be at "
-                f"most {MAX_TOTAL_DURATION:.0f}s"
-            )
-        return self
+class ScoringResponse(BaseModel):
+    scores: List[CandidateScore] = Field(min_length=1)
 
-
-class TranscriptPlanResponse(BaseModel):
-    full_transcript: str = Field(min_length=1)
-    words: List[WordTimestamp] = Field(default_factory=list)
-    candidates: List[EditPlanCandidate] = Field(min_length=1, max_length=5)
+SCORING_SCHEMA_DICT: dict = {
+    "type": "object",
+    "properties": {
+        "scores": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "candidate_index": {"type": "integer", "minimum": 0},
+                    "hook_score": {"type": "number", "minimum": 0, "maximum": 1},
+                    "overall_score": {"type": "number", "minimum": 0, "maximum": 1},
+                },
+                "required": ["candidate_index", "hook_score", "overall_score"],
+            },
+        },
+    },
+    "required": ["scores"],
+}
 
 
 # ----------------------------------------------------------------------------

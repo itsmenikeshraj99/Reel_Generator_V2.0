@@ -20,8 +20,10 @@ import logging
 import os
 import subprocess
 import time
+import random
 import tempfile
 from typing import Any, Awaitable, Callable, Optional
+
 
 
 from worker.config import settings
@@ -50,10 +52,15 @@ MAX_RETRIES_PER_STAGE = 3
 RETRY_BACKOFF_SECONDS = 5
 
 
+class NonRetryableError(Exception):
+    """Raised when a stage failure is permanent and should not be retried."""
+    pass
+
 class Pipeline:
     def __init__(self, video_id: str) -> None:
         self.video_id = video_id
         self.state = "UPLOADED"
+        self.gemini_file_uri: Optional[str] = None
         # Stage where the pipeline should resume on retry. If a previous
         # run left the job at RENDERING, the new run starts at RENDERING
         # rather than at VALIDATING. `None` means "from the top".
@@ -232,10 +239,9 @@ class Pipeline:
         retry_count and return True. On final failure, mark the job
         PERMANENTLY_FAILED and return False.
 
-        Between attempts we sleep `RETRY_BACKOFF_SECONDS` to let transient
-        issues (Gemini 503, OOM, etc) clear. Exceptions are caught and
-        treated as a failed attempt — we don't want one Python crash to
-        bypass the whole retry budget.
+        Between attempts we use exponential backoff with jitter to let
+        transient issues (Gemini 503, OOM, etc) clear. Exceptions are caught
+        and treated as a failed attempt.
         """
         last_err: str = ""
         for attempt in range(1, MAX_RETRIES_PER_STAGE + 1):
@@ -257,6 +263,12 @@ class Pipeline:
                     return True
                 last_err = f"stage body returned False (attempt {attempt}/{MAX_RETRIES_PER_STAGE})"
             except Exception as exc:  # noqa: BLE001
+                if isinstance(exc, NonRetryableError):
+                    last_err = f"Non-retryable error: {exc}"[:500]
+                    logger.error("Stage %s for %s failed with non-retryable error: %s", stage, self.video_id, exc)
+                    await self.permanent_fail(last_err)
+                    return False
+
                 last_err = f"{type(exc).__name__}: {exc}"[:500]
                 logger.warning(
                     "Stage %s for %s raised on attempt %d/%d: %s",
@@ -276,11 +288,15 @@ class Pipeline:
 
             # If we have attempts left, back off and try again.
             if attempt < MAX_RETRIES_PER_STAGE:
+                # Exponential backoff: 5 * (2 ^ (attempt-1)) + jitter
+                # Attempt 1 -> 2: 5 * 1 + [0, 2) = 5-7s
+                # Attempt 2 -> 3: 5 * 2 + [0, 2) = 10-12s
+                sleep_time = (RETRY_BACKOFF_SECONDS * (2 ** (attempt - 1))) + random.uniform(0, 2)
                 logger.info(
-                    "Retrying stage %s for %s in %ds (attempt %d → %d)",
-                    stage, self.video_id, RETRY_BACKOFF_SECONDS, attempt, attempt + 1,
+                    "Retrying stage %s for %s in %.2fs (attempt %d → %d)",
+                    stage, self.video_id, sleep_time, attempt, attempt + 1,
                 )
-                await asyncio.sleep(RETRY_BACKOFF_SECONDS)
+                await asyncio.sleep(sleep_time)
 
         # Exhausted. Permanent fail.
         await self.permanent_fail(
@@ -369,7 +385,14 @@ class Pipeline:
 
     async def _stage_transcribe_plan(self, video_path: str) -> bool:
         from worker.stages.transcribe_plan import transcribe_and_plan
-        return await transcribe_and_plan(self.video_id, video_path)
+        # Pass the shared gemini_file_uri to avoid re-uploading on stage retries.
+        # The stage will update self.gemini_file_uri once the upload is successful.
+        result = await transcribe_and_plan(
+            self.video_id, video_path,
+            existing_uri=self.gemini_file_uri,
+            update_uri=lambda uri: setattr(self, 'gemini_file_uri', uri)
+        )
+        return result
 
     async def _stage_review(self) -> bool:
         from worker.stages.review import review_candidates
