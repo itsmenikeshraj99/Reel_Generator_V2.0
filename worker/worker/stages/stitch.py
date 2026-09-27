@@ -20,7 +20,7 @@ def _run_ffmpeg(cmd: List[str]) -> None:
         )
 
 
-async def stitch_and_caption(video_id: str, video_path: str, output_path: str) -> bool:
+async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_path: str) -> bool:
     """Cut segments per the accepted edit plan and stitch into one MP4.
 
     No captions are burned in yet (despite the historical name) — that's a follow-up.
