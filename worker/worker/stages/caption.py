@@ -163,7 +163,7 @@ def _build_ass(
     return _ASS_HEADER + "\n".join(events) + "\n"
 
 
-async def burn_captions(video_id: str, video_path: str, output_path: str) -> bool:
+async def burn_captions(pipeline, video_id: str, video_path: str, output_path: str) -> bool:
     """Burn ASS captions into the reel. Returns True on success.
 
     On failure, returns False but logs — the upstream video is still
