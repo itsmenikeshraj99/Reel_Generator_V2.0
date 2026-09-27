@@ -123,7 +123,7 @@ export default function StatusClient() {
           clearInterval(pollRef.current);
           pollRef.current = null;
         }
-      } else if (currentStatus === "FAILED") {
+      } else if (currentStatus === "FAILED" || currentStatus === "PERMANENTLY_FAILED") {
         setError(data.error || "Processing failed. Please try again.");
         if (pollRef.current) {
           clearInterval(pollRef.current);
@@ -198,11 +198,11 @@ export default function StatusClient() {
     );
   }
 
-  const stageStates = classifyStages(status, status === "FAILED");
+  const stageStates = classifyStages(status, status === "FAILED" || status === "PERMANENTLY_FAILED");
   const completedCount = Object.values(stageStates).filter((s) => s === "done").length;
   const baseProgress = (completedCount / STAGE_CONFIG.length) * 100;
   const isReady = status === "READY";
-  const isFailed = status === "FAILED";
+  const isFailed = status === "FAILED" || status === "PERMANENTLY_FAILED";
 
   // Smooth progress: while a stage is active, animate from base% to base%+25%
   // so the bar feels alive even before the backend advances the stage.
