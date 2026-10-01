@@ -223,12 +223,23 @@ class Pipeline:
             logger.exception("Pipeline crashed for %s: %s", self.video_id, exc)
             await self.fail(str(exc))
         finally:
+            # Cleanup all temporary files
+            # We use a glob search for compressed versions to avoid tracking every attempt path
+            try:
+                import glob
+                compressed_pattern = os.path.join(tempfile.gettempdir(), f"reel_{self.video_id}_compressed_*.mp4")
+                for p in glob.glob(compressed_pattern):
+                    os.remove(p)
+            except Exception:
+                pass
+
             for p in (temp_src_path, reframed_path, output_path, captioned_path):
                 if p and os.path.exists(p):
                     try:
                         os.remove(p)
                     except OSError:
                         pass
+
 
     async def retry_stage(
         self,
@@ -378,7 +389,23 @@ class Pipeline:
         except Exception:  # noqa: BLE001
             pass
 
-    # --- Stage wrappers (lazy imports keep the module import graph simple) ---
+    async def _get_video_duration(self, video_path: str) -> float:
+        """Helper to get video duration using ffprobe."""
+        try:
+            out = subprocess.check_output(
+                [
+                    "ffprobe", "-v", "error",
+                    "-show_entries", "format=duration",
+                    "-of", "default=noprint_wrappers=1:nokey=1",
+                    video_path,
+                ],
+                stderr=subprocess.STDOUT, timeout=30,
+            ).decode().strip()
+            return float(out)
+        except Exception as exc:
+            logger.warning("Could not get duration for %s: %s", video_path, exc)
+            return 0.0
+
     async def _stage_validate(self, video_path: str) -> bool:
         from worker.stages.validate import validate_video
         return await validate_video(video_path)
@@ -476,8 +503,79 @@ class Pipeline:
             if await burn_captions(self, self.video_id, output_path, captioned_path):
                 final_path = captioned_path
 
+            # --- Adaptive Size Control ---
+            # Supabase Free plan has a 50 MiB upload limit. We target 45 MiB.
+            TARGET_SIZE_BYTES = 45 * 1024 * 1024
+            AUDIO_BITRATE_BPS = 128000
+            MIN_VIDEO_BITRATE_BPS = 800000 # 800 kbps floor for 720p quality
+
+            final_size = os.path.getsize(final_path)
+            if final_size > TARGET_SIZE_BYTES:
+                logger.info("Final reel size (%d MB) exceeds target (45 MB). Starting adaptive compression...", final_size // (1024*1024))
+
+                duration = await self._get_video_duration(final_path)
+                if duration <= 0:
+                    raise NonRetryableError(f"Could not determine duration for {final_path}; cannot compress")
+
+                compressed_path = None
+                for attempt in range(1, 4):
+                    # Calculate target bitrate. For retries, be slightly more aggressive (reduce target size by 10% per attempt)
+                    attempt_target_bytes = TARGET_SIZE_BYTES * (0.9 ** (attempt - 1))
+                    target_video_bitrate = ((attempt_target_bytes * 8) - (AUDIO_BITRATE_BPS * duration)) / duration
+
+                    if target_video_bitrate < MIN_VIDEO_BITRATE_BPS:
+                        logger.error("Calculated bitrate (%.2f kbps) below quality threshold (800 kbps)", target_video_bitrate / 1000)
+                        raise NonRetryableError(
+                            f"Reel is too long ({duration:.1f}s) to fit in 45MB without destroying quality. "
+                            f"Required bitrate: {target_video_bitrate/1000:.1f} kbps"
+                        )
+
+                    current_compressed_path = os.path.join(tempfile.gettempdir(), f"reel_{self.video_id}_compressed_{attempt}.mp4")
+
+                    logger.info(
+                        "Adaptive encode attempt %d/3: target_bitrate=%.2f kbps, duration=%.1fs",
+                        attempt, target_video_bitrate / 1000, duration
+                    )
+
+                    compress_cmd = [
+                        "ffmpeg", "-y",
+                        "-threads", "1",
+                        "-filter_threads", "1",
+                        "-i", final_path,
+                        "-c:v", "libx264", "-preset", "ultrafast",
+                        "-b:v", str(int(target_video_bitrate)),
+                        "-maxrate", str(int(target_video_bitrate * 1.2)),
+                        "-bufsize", str(int(target_video_bitrate * 2)),
+                        "-c:a", "aac", "-b:a", str(AUDIO_BITRATE_BPS // 1000),
+                        "-movflags", "+faststart",
+                        current_compressed_path,
+                    ]
+
+                    await self._run_with_heartbeat(compress_cmd)
+
+                    compressed_size = os.path.getsize(current_compressed_path)
+                    logger.info("Attempt %d result: %d MB", attempt, compressed_size // (1024*1024))
+
+                    if compressed_size <= TARGET_SIZE_BYTES:
+                        compressed_path = current_compressed_path
+                        break
+
+                if not compressed_path or os.path.getsize(compressed_path) > TARGET_SIZE_BYTES:
+                    final_measured_size = os.path.getsize(final_path) if not compressed_path else os.path.getsize(compressed_path)
+                    raise NonRetryableError(
+                        f"Could not compress reel below 45 MiB after 3 attempts. Final size: {final_measured_size // (1024*1024)} MB, Duration: {duration:.1f}s"
+                    )
+
+                # Update final_path to the compressed version and track it for cleanup
+                # We can't easily add to the run() finally block from here without a class attribute,
+                # so we'll rely on the fact that the run() finally block cleans all paths.
+                # However, the run() finally block currently only knows about 4 specific paths.
+                # We should ensure this new path is cleaned up.
+                final_path = compressed_path
+
             with open(final_path, "rb") as f:
                 worker_storage.upload_file(storage_target, f.read(), content_type="video/mp4")
+
 
             # Insert the reels row. The `meta` column is the Phase 6
             # addition; if the live DB hasn't been migrated yet, fall
