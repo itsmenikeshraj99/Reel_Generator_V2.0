@@ -187,6 +187,14 @@ async def _measure(clip_path: str) -> Tuple[Dict[str, Any], str]:
             "expires_at": "2099-12-31T00:00:00+00:00",
         }).execute()
 
+        # Same job-row initialisation the worker's /process endpoint does.
+        supabase_client.table("jobs").upsert({
+            "video_id": video_id,
+            "current_stage": "PENDING",
+            "status": "RUNNING",
+            "last_error": None,
+        }, on_conflict="video_id").execute()
+
         t_run = time.time()
         stage_marks.append(("DOWNLOAD", t_run))
         await Pipeline(video_id).run()
