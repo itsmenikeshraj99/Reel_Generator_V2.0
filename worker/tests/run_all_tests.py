@@ -49,6 +49,7 @@ TESTS: List[Tuple[str, str]] = [
     ("test_05_low_quality", "Test 05: Low-quality / invalid video"),
     ("test_06_mid_render_crash", "Test 06: Kill mid-render (resume)"),
     ("test_07_cross_user_rls", "Test 07: Cross-user RLS isolation"),
+    ("test_08_heartbeat_runner", "Test 08: Heartbeat subprocess runner"),
 ]
 
 

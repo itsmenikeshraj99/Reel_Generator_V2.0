@@ -51,6 +51,9 @@ MAX_RETRIES_PER_STAGE = 3
 # retries snappy for transient blips (ffmpeg OOM, Gemini rate-limit, etc).
 RETRY_BACKOFF_SECONDS = 5
 
+# Seconds between database heartbeats while a subprocess (ffmpeg) runs.
+HEARTBEAT_INTERVAL_S = 60
+
 
 class NonRetryableError(Exception):
     """Raised when a stage failure is permanent and should not be retried."""
@@ -83,31 +86,38 @@ class Pipeline:
         """
         # Note: subprocess.Popen is synchronous. We run it in the executor
         # via _run_pipeline_sync, so this is acceptable.
-        process = subprocess.Popen(
-            cmd,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-        )
+        # stderr goes to a temp file, not a pipe: ffmpeg's progress output
+        # would otherwise fill the pipe buffer and freeze the process.
+        with tempfile.TemporaryFile() as stderr_file:
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.DEVNULL,
+                stderr=stderr_file,
+            )
 
-        start_time = time.time()
-        try:
-            while process.poll() is None:
-                # Wait for a bit before checking again and sending heartbeat
-                time.sleep(60)
-                await self._heartbeat()
+            start_time = time.time()
+            last_beat = start_time
+            try:
+                while process.poll() is None:
+                    time.sleep(1)
+                    now = time.time()
+                    if now - last_beat >= HEARTBEAT_INTERVAL_S:
+                        await self._heartbeat()
+                        last_beat = now
 
-                if time.time() - start_time > timeout:
-                    process.kill()
-                    raise RuntimeError(f"Subprocess timed out after {timeout}s")
+                    if now - start_time > timeout:
+                        process.kill()
+                        raise RuntimeError(f"Subprocess timed out after {timeout}s")
 
-            stdout, stderr = process.communicate()
-            if process.returncode != 0:
-                raise RuntimeError(f"Subprocess failed (rc={process.returncode}): {stderr[-500:]}")
-        except Exception:
-            process.kill()
-            process.wait()
-            raise
+                if process.returncode != 0:
+                    stderr_file.seek(0, os.SEEK_END)
+                    stderr_file.seek(max(0, stderr_file.tell() - 500))
+                    tail = stderr_file.read().decode("utf-8", errors="replace")
+                    raise RuntimeError(f"Subprocess failed (rc={process.returncode}): {tail}")
+            except Exception:
+                process.kill()
+                process.wait()
+                raise
 
     async def run(self) -> None:
         logger.info("Starting pipeline for video %s", self.video_id)
