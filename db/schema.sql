@@ -31,6 +31,8 @@ create table if not exists transcripts (
     full_text text not null,
     -- Word-level timestamps: JSONB array of {text, start, end}.
     words jsonb,
+    -- Sentence index: JSONB array of {id, start, end, text, first_word, last_word}.
+    sentences jsonb,
     created_at timestamp with time zone default current_timestamp
 );
 
@@ -44,6 +46,10 @@ create table if not exists edit_plans (
     hook_score float,
     overall_score float,
     feedback text,
+    -- Smart reel pipeline: planner output, its shape, and the verifier verdict.
+    plan jsonb,
+    shape text,
+    verifier jsonb,
     created_at timestamp with time zone default current_timestamp
 );
 
@@ -98,6 +104,10 @@ alter table jobs add constraint jobs_current_stage_check
 alter table edit_plans drop constraint if exists edit_plans_status_check;
 alter table edit_plans add constraint edit_plans_status_check
   check (status in ('pending_review', 'accepted', 'rejected'));
+
+alter table edit_plans drop constraint if exists edit_plans_shape_check;
+alter table edit_plans add constraint edit_plans_shape_check
+  check (shape is null or shape in ('single_stretch', 'montage'));
 
 -- -------------------------------------------------------------
 -- 3. Indexes (Performance)
