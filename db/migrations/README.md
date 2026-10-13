@@ -31,3 +31,4 @@ NNN_short_description.sql
 | ------------------------------------------------- | ----------------------------------------------------------------------------------- |
 | `002_status_constraints_and_triggers.sql`         | CHECK constraints on `videos.status`, `jobs.status`, `jobs.current_stage`, `edit_plans.status`; `updated_at` triggers on `jobs`, `videos`, `reels`. |
 | `003_auto_delete_cron.sql`                        | 24-hour auto-delete via `pg_cron`. Adds `cleanup_expired_sessions()` function and a 5-min schedule. Storage objects are deleted via the Supabase HTTP API; DB rows cascade. See the operator checklist at the bottom of the file for one-time Vault + GUC setup. |
+| `005_smart_reel.sql`                              | Smart reel pipeline columns (all nullable): `transcripts.sentences`, `edit_plans.plan`, `edit_plans.shape` (with CHECK), `edit_plans.verifier`. |

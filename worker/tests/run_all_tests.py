@@ -53,6 +53,7 @@ TESTS: List[Tuple[str, str]] = [
     ("test_09_measure_summary", "Test 09: Measurement tool summary"),
     ("test_10_asr_adapter", "Test 10: Speech-to-text adapter"),
     ("test_11_sentences", "Test 11: Sentence index"),
+    ("test_12_plan_store", "Test 12: Smart reel storage + migration 005"),
 ]
 
 
