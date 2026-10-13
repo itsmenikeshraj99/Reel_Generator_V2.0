@@ -47,6 +47,12 @@ class WorkerSettings(BaseSettings):
     # Comma-separated list of fallback models. Empty = use the built-in chain.
     GEMINI_FALLBACK_MODELS: str = ""
 
+    # Speech-to-text provider for the smart pipeline: "gemini" (today's
+    # behaviour) or "groq". Groq needs GROQ_API_KEY.
+    ASR_PROVIDER: str = "gemini"
+    GROQ_API_KEY: str = ""
+    GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
+
     WORKER_SHARED_SECRET: str = ""
     WORKER_HOST: str = "127.0.0.1"
     WORKER_PORT: int = 8001
@@ -67,6 +73,14 @@ class WorkerSettings(BaseSettings):
                 f"GEMINI_MODEL={v!r} is not a known model. "
                 f"Allowed: {_PRIMARY_GEMINI_MODELS}"
             )
+        return v
+
+    @field_validator("ASR_PROVIDER")
+    @classmethod
+    def _validate_asr_provider(cls, v: str) -> str:
+        v = v.strip().lower()
+        if v not in ("gemini", "groq"):
+            raise ValueError(f"ASR_PROVIDER={v!r} must be 'gemini' or 'groq'")
         return v
 
     @field_validator("WORKER_HOST")
