@@ -53,6 +53,9 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # Target length of a smart-pipeline reel, in seconds (20-60).
+    REEL_TARGET_SECONDS: int = 38
+
     WORKER_SHARED_SECRET: str = ""
     WORKER_HOST: str = "127.0.0.1"
     WORKER_PORT: int = 8001
@@ -81,6 +84,13 @@ class WorkerSettings(BaseSettings):
         v = v.strip().lower()
         if v not in ("gemini", "groq"):
             raise ValueError(f"ASR_PROVIDER={v!r} must be 'gemini' or 'groq'")
+        return v
+
+    @field_validator("REEL_TARGET_SECONDS")
+    @classmethod
+    def _validate_reel_target(cls, v: int) -> int:
+        if not 20 <= v <= 60:
+            raise ValueError(f"REEL_TARGET_SECONDS={v} must be between 20 and 60")
         return v
 
     @field_validator("WORKER_HOST")
