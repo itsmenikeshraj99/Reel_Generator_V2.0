@@ -55,6 +55,8 @@ class WorkerSettings(BaseSettings):
 
     # Target length of a smart-pipeline reel, in seconds (20-60).
     REEL_TARGET_SECONDS: int = 38
+    # How many times the verifier may send the plan back for revision (0-5).
+    MAX_REVISIONS: int = 2
 
     WORKER_SHARED_SECRET: str = ""
     WORKER_HOST: str = "127.0.0.1"
@@ -91,6 +93,13 @@ class WorkerSettings(BaseSettings):
     def _validate_reel_target(cls, v: int) -> int:
         if not 20 <= v <= 60:
             raise ValueError(f"REEL_TARGET_SECONDS={v} must be between 20 and 60")
+        return v
+
+    @field_validator("MAX_REVISIONS")
+    @classmethod
+    def _validate_max_revisions(cls, v: int) -> int:
+        if not 0 <= v <= 5:
+            raise ValueError(f"MAX_REVISIONS={v} must be between 0 and 5")
         return v
 
     @field_validator("WORKER_HOST")
