@@ -44,20 +44,29 @@ def load_sentences(video_id: str, client: Any = None) -> Optional[List[Dict[str,
 def save_plan(
     video_id: str,
     plan: Dict[str, Any],
-    segments: List[Dict[str, float]],
+    segments: List[Dict[str, Any]],
     verifier: Optional[Dict[str, Any]] = None,
     client: Any = None,
 ) -> None:
     """Store the smart plan as the video's single accepted edit plan.
 
-    `segments` are the final snapped {start, end} cuts, so the existing
-    render stage can use this row unchanged. A previous smart plan for the
+    `segments` are the final snapped cuts as {start_time, end_time, ...}
+    (the keys stitch.py and caption.py read), so the existing render
+    stage can use this row unchanged. A previous smart plan for the
     same video is replaced; old-style candidate rows (plan is null) are
     left alone.
     """
     shape = plan.get("shape")
     if shape not in VALID_SHAPES:
         raise ValueError(f"plan shape must be one of {VALID_SHAPES}, got {shape!r}")
+
+    for seg in segments:
+        try:
+            ok = float(seg["end_time"]) > float(seg["start_time"]) >= 0
+        except (KeyError, TypeError, ValueError):
+            ok = False
+        if not ok:
+            raise ValueError(f"segment must have start_time >= 0 and end_time > start_time, got {seg!r}")
 
     db = _client(client)
     db.table("edit_plans").delete().eq("video_id", video_id).not_.is_("plan", "null").execute()

@@ -34,7 +34,7 @@ _END_RE = re.compile(r"silence_end:\s*(-?[0-9.]+)")
 class SnapResult:
     ok: bool
     beats: List[Dict[str, Any]] = field(default_factory=list)
-    segments: List[Dict[str, float]] = field(default_factory=list)
+    segments: List[Dict[str, Any]] = field(default_factory=list)  # {start_time, end_time, title, reason}
     total_seconds: float = 0.0
     dropped: List[str] = field(default_factory=list)
     errors: List[str] = field(default_factory=list)
@@ -182,7 +182,13 @@ def snap_plan(
             cut_start=round(c["start"], 3), cut_end=round(c["end"], 3),
             snapped_start=c["snapped_start"], snapped_end=c["snapped_end"],
         ))
-        result.segments.append({"start": round(c["start"], 3), "end": round(c["end"], 3)})
+        # Same keys the render stage reads (stitch.py, caption.py).
+        result.segments.append({
+            "start_time": round(c["start"], 3),
+            "end_time": round(c["end"], 3),
+            "title": c["beat"].get("label") or f"{c['beat'].get('from_id')}-{c['beat'].get('to_id')}",
+            "reason": c["beat"].get("why") or "",
+        })
     result.total_seconds = round(total(), 3)
     result.ok = True
     return result
