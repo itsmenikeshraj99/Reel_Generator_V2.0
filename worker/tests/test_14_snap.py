@@ -148,10 +148,21 @@ async def main() -> bool:
         plan = plan_of(("S5", "S5"), ("S1", "S1"), ("S3", "S3"))
         before = copy.deepcopy(plan)
         r = snap_plan(plan, sents, words, [])
-        assert_([s["start"] for s in r.segments] == [b["cut_start"] for b in r.beats], "segments")
+        assert_([s["start_time"] for s in r.segments] == [b["cut_start"] for b in r.beats], "segments")
         assert_(r.beats[0]["from_id"] == "S5" and r.beats[1]["from_id"] == "S1", "order")
         assert_(plan == before, "plan modified")
-        assert_(approx(r.total_seconds, sum(s["end"] - s["start"] for s in r.segments), 1e-2), "total")
+        assert_(approx(r.total_seconds, sum(s["end_time"] - s["start_time"] for s in r.segments), 1e-2), "total")
+    results.append(t["passed"])
+
+    with test_case("snapped segments are readable by the real caption builder and stitch checks") as t:
+        from worker.stages.caption import _build_ass
+
+        r = snap_plan(plan_of(("S1", "S1"), ("S3", "S3")), sents, words, [])
+        assert_(all(set(("start_time", "end_time", "title", "reason")) <= set(s) for s in r.segments), f"{r.segments}")
+        ass = _build_ass(r.segments, words)  # the function caption.py runs on the saved plan
+        assert_("Dialogue:" in ass, "no caption lines were built from the snapped segments")
+        total = sum(float(s["end_time"]) - float(s["start_time"]) for s in r.segments)  # stitch.py's own sum
+        assert_(approx(total, r.total_seconds, 1e-2), f"{total} vs {r.total_seconds}")
     results.append(t["passed"])
 
     with test_case("random timelines: cuts always enclose the words and never enter another word") as t:

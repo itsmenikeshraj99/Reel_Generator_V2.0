@@ -96,7 +96,8 @@ class FakeDB:
 
 
 PLAN = {"shape": "montage", "reason": "Because.", "beats": [{"from_id": "S1", "to_id": "S2"}]}
-SEGS = [{"start": 1.0, "end": 9.5}, {"start": 40.0, "end": 52.0}]
+SEGS = [{"start_time": 1.0, "end_time": 9.5, "title": "a", "reason": ""},
+        {"start_time": 40.0, "end_time": 52.0, "title": "b", "reason": ""}]
 
 
 async def main() -> bool:
@@ -156,6 +157,18 @@ async def main() -> bool:
         assert_(len(mine) == 1 and mine[0]["shape"] == "single_stretch", f"{mine}")
         assert_(old in rows, "old candidate row was deleted")
         assert_(other in rows, "another video's plan was deleted")
+    results.append(t["passed"])
+
+    with test_case("segments the render stage cannot read are rejected before any write") as t:
+        db = FakeDB(edit_plans=[])
+        for bad in ([{"start": 1.0, "end": 9.0}], [{"start_time": 5.0, "end_time": 5.0}],
+                    [{"start_time": -1.0, "end_time": 3.0}], [{"start_time": "x", "end_time": 3.0}]):
+            try:
+                save_plan("v1", PLAN, bad, client=db)
+                raise AssertionError(f"expected ValueError for {bad!r}")
+            except ValueError:
+                pass
+        assert_(db.tables["edit_plans"] == [], "a row was written")
     results.append(t["passed"])
 
     with test_case("an invalid shape is rejected before any write") as t:
