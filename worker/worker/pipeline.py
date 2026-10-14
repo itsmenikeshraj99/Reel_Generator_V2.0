@@ -68,6 +68,11 @@ class Pipeline:
         # run left the job at RENDERING, the new run starts at RENDERING
         # rather than at VALIDATING. `None` means "from the top".
         self._resume_from: Optional[str] = None
+        # Smart pipeline (SMART_PIPELINE_ENABLED): data handed from the
+        # transcribe/understand stage to the selection stage, and extra
+        # metrics for reels.meta. Both stay empty when the flag is off.
+        self.smart_state: dict = {}
+        self.reel_meta_extra: dict = {}
 
     async def _heartbeat(self) -> None:
         """Update the `updated_at` timestamp to signal liveness to the backend."""
@@ -179,7 +184,7 @@ class Pipeline:
                     return await self.fail("Skipped REVIEWING")
                 if not await self.retry_stage(
                     "REVIEWING",
-                    lambda: self._stage_review(),
+                    lambda: self._stage_review(temp_src_path),
                 ):
                     return
             else:
@@ -421,6 +426,9 @@ class Pipeline:
         return await validate_video(video_path)
 
     async def _stage_transcribe_plan(self, video_path: str) -> bool:
+        if settings.SMART_PIPELINE_ENABLED:
+            from worker.stages.smart_plan import run_transcribe_understand
+            return await run_transcribe_understand(self, video_path)
         from worker.stages.transcribe_plan import transcribe_and_plan
         # Pass the shared gemini_file_uri to avoid re-uploading on stage retries.
         # The stage will update self.gemini_file_uri once the upload is successful.
@@ -431,9 +439,16 @@ class Pipeline:
         )
         return result
 
-    async def _stage_review(self) -> bool:
+    async def _stage_review(self, video_path: Optional[str] = None) -> bool:
+        if settings.SMART_PIPELINE_ENABLED:
+            from worker.stages.smart_plan import run_select
+            return await run_select(self, video_path)
         from worker.stages.review import review_candidates
         return await review_candidates(self.video_id)
+
+    def _reel_meta(self, quality: str, captioned: bool) -> dict:
+        """The `reels.meta` value; carries smart-pipeline metrics when present."""
+        return {"quality": quality, "captioned": captioned, **self.reel_meta_extra}
 
     async def _stage_render(
         self,
@@ -597,10 +612,10 @@ class Pipeline:
                 "title": "AI Generated Reel",
             }
             try:
-                supabase_client.table("reels").insert({**reels_row, "meta": {
-                    "quality": quality,
-                    "captioned": final_path == captioned_path,
-                }}).execute()
+                supabase_client.table("reels").insert({
+                    **reels_row,
+                    "meta": self._reel_meta(quality, final_path == captioned_path),
+                }).execute()
             except Exception as exc:  # noqa: BLE001
                 logger.warning(
                     "reels insert with meta failed (%s); retrying without meta", exc,

@@ -53,6 +53,10 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # Master switch for the smart reel pipeline (speech-to-text + sentence
+    # planning + verifier). Off = today's pipeline, unchanged.
+    SMART_PIPELINE_ENABLED: bool = False
+
     # Target length of a smart-pipeline reel, in seconds (20-60).
     REEL_TARGET_SECONDS: int = 38
     # How many times the verifier may send the plan back for revision (0-5).
