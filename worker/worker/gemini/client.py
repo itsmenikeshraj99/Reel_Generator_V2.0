@@ -16,7 +16,9 @@ second, separate user-role Content (which the Gemini API strictly rejects).
 import json
 import logging
 import asyncio
-from typing import Any, Dict, List, Optional
+import random
+import time
+from typing import Any, Callable, Dict, List, Optional
 
 from google import genai as google_genai
 from google.genai import types as genai_types
@@ -29,6 +31,70 @@ logger = logging.getLogger("gemini_client")
 
 class GeminiResponseInvalid(Exception):
     """Raised when the model returns HTTP 200 but the body is not valid."""
+
+
+# ── Transient-error retry ──────────────────────────────────────────
+
+_TRANSIENT_CODES = {429, 500, 502, 503, 504}
+_TRANSIENT_NAMES = {
+    "ServerError", "ReadTimeout", "ConnectTimeout", "ConnectError",
+    "RemoteProtocolError", "TimeoutException", "ReadError",
+}
+_TRANSIENT_WORDS = ("503", "unavailable", "overloaded", "deadline exceeded", "timed out")
+RETRY_BASE_DELAY_S = 2.0
+
+# Indirection so tests can run without really sleeping.
+_sleep = time.sleep
+_sleep_async = asyncio.sleep
+
+
+def is_transient(exc: BaseException) -> bool:
+    """True for errors that usually clear in seconds (overload, 5xx, timeouts)."""
+    code = getattr(exc, "code", None)
+    if isinstance(code, int):
+        return code in _TRANSIENT_CODES
+    if type(exc).__name__ in _TRANSIENT_NAMES:
+        return True
+    text = str(exc).lower()
+    return any(word in text for word in _TRANSIENT_WORDS)
+
+
+def _retry_delay(attempt: int) -> float:
+    return RETRY_BASE_DELAY_S * (2 ** (attempt - 1)) + random.uniform(0, 1)
+
+
+def _max_retries() -> int:
+    return max(0, int(getattr(settings, "GEMINI_TRANSIENT_RETRIES", 2)))
+
+
+def call_with_retry(fn: Callable[[], Any], label: str = "") -> Any:
+    """Run `fn`; on a transient error wait and retry the SAME call a few times."""
+    retries = _max_retries()
+    for attempt in range(1, retries + 2):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            if attempt > retries or not is_transient(exc):
+                raise
+            wait = _retry_delay(attempt)
+            logger.warning("Gemini %s transient error (%s); retry %d/%d in %.1fs",
+                           label, type(exc).__name__, attempt, retries, wait)
+            _sleep(wait)
+
+
+async def call_with_retry_async(fn: Callable[[], Any], label: str = "") -> Any:
+    """Async twin of `call_with_retry` (waits with asyncio.sleep)."""
+    retries = _max_retries()
+    for attempt in range(1, retries + 2):
+        try:
+            return fn()
+        except Exception as exc:  # noqa: BLE001
+            if attempt > retries or not is_transient(exc):
+                raise
+            wait = _retry_delay(attempt)
+            logger.warning("Gemini %s transient error (%s); retry %d/%d in %.1fs",
+                           label, type(exc).__name__, attempt, retries, wait)
+            await _sleep_async(wait)
 
 
 # ── Public API ─────────────────────────────────────────────────────
@@ -128,10 +194,13 @@ class GeminiClient:
             try:
                 logger.info("Gemini call using model %s", model_id)
 
-                response = self.client.models.generate_content(
-                    model=model_id,
-                    contents=full_contents,
-                    config=config or None,
+                response = call_with_retry(
+                    lambda: self.client.models.generate_content(
+                        model=model_id,
+                        contents=full_contents,
+                        config=config or None,
+                    ),
+                    label=model_id,
                 )
 
                 raw_text = response.text

@@ -19,7 +19,7 @@ from google.genai import types as genai_types
 
 from worker.config import settings
 from worker.pipeline import NonRetryableError
-from worker.gemini.client import gemini_client
+from worker.gemini.client import call_with_retry_async, gemini_client
 from worker.gemini.prompts import TRANSCRIPTION_PROMPT, CANDIDATE_EXTRACTION_PROMPT, CANDIDATE_SCORING_PROMPT
 from worker.gemini.schemas import (
     TRANSCRIPTION_SCHEMA_DICT,
@@ -86,13 +86,16 @@ async def _gemini_call_with_fallback(
     for model_id in settings.gemini_fallback_chain:
         try:
             logger.info("Gemini call using model %s", model_id)
-            response = gemini_client.client.models.generate_content(
-                model=model_id,
-                contents=[genai_types.Content(role="user", parts=parts)],
-                config=genai_types.GenerateContentConfig(
-                    response_mime_type="application/json",
-                    response_schema=response_schema,
+            response = await call_with_retry_async(
+                lambda: gemini_client.client.models.generate_content(
+                    model=model_id,
+                    contents=[genai_types.Content(role="user", parts=parts)],
+                    config=genai_types.GenerateContentConfig(
+                        response_mime_type="application/json",
+                        response_schema=response_schema,
+                    ),
                 ),
+                label=model_id,
             )
 
             # Robust JSON extraction
