@@ -1,6 +1,6 @@
 """Smart pipeline, call 3: watch the draft and judge it.
 
-Prompt version: verify-v1
+Prompt version: verify-v2
 
 Gemini watches a small draft of the reel together with the plan's reason
 and, for every beat, the sentence just before and just after it in the
@@ -20,24 +20,37 @@ logger = logging.getLogger("gemini_verify")
 
 VERDICTS = ("pass", "revise", "fail")
 MAX_FIXES = 4
+MAX_TOLERATED_CUTS = 1  # one confusing beat still passes (it is noted); two or more send the plan back
+# Suggestions the planner cannot act on (it only chooses sentences, order and length).
+NON_ACTIONABLE = (
+    "voiceover", "voice-over", "voice over", "transition", "audio level", "volume", "music", "fade",
+    "text overlay", "on-screen text", "caption", "pause", "smooth", "soften", "sound effect",
+)
 
-VERIFY_PROMPT = """You are a strict editor watching a DRAFT of a short reel (low resolution, hard cuts).
-It was assembled from a longer video. Judge it as a viewer who has never seen the full video.
+VERIFY_PROMPT = """You are a strict editor watching a DRAFT of a short reel assembled from a longer video.
+The draft is low resolution and uses plain HARD CUTS with no transitions, music or smoothing: those are
+added later. So do NOT judge how rough a cut sounds or looks. Judge only whether the CONTENT works for a
+viewer who has never seen the full video.
 
 You also get the plan's stated reason, and for each beat the sentence that came just before and just
-after it in the ORIGINAL video, so you can tell whether the clip changes the speaker's meaning.
+after it in the ORIGINAL video, so you can tell whether a clip changes the speaker's meaning.
 
 Answer:
 - main_point_stated: in ONE sentence, what is the main point of this reel, in your own words?
   If you cannot tell, say "unclear".
-- hook_ok: do the first seconds grab attention and set up what follows?
-- abrupt_cuts: the numbers of beats whose cut INTO that beat feels abrupt, jarring or confusing.
-  Empty list if all cuts feel natural.
-- meaning_preserved: do the clips together keep what the speaker actually meant? Answer false if
-  leaving out or reordering parts makes the speaker seem to say something they did not mean.
-- verdict: "pass" = ready to publish; "revise" = fixable by choosing different sentences, order or
-  length; "fail" = fundamentally does not work.
-- fixes: up to 4 short, concrete fixes the planner can apply by changing which sentences are used.
+- hook_ok: false if the reel starts mid-sentence, mid-thought or on a filler ("yeah", "so", "and",
+  "okay"), or if the first seconds would not make a viewer keep watching. Otherwise true.
+- abrupt_cuts: the numbers of beats that are CONFUSING to follow after the previous beat: the beat starts
+  mid-thought, refers to something the viewer was never told, or its logic does not follow. Do NOT flag a
+  beat just because the picture or sound jumps. Use an empty list when every beat makes sense.
+- meaning_preserved: do the clips together keep what the speaker actually meant? Answer false if leaving
+  out or reordering parts makes the speaker seem to say something they did not mean.
+- verdict: "pass" = ready to publish; "revise" = fixable by choosing different sentences, order or length;
+  "fail" = fundamentally does not work.
+- fixes: up to 4 short, concrete changes the planner can make ONLY by choosing different sentences, a
+  different order, or a different length (for example: "Start beat 2 at the sentence that introduces the
+  study"). Do NOT suggest voiceover, text, transitions, music, audio levels, pauses or any editing effect:
+  the planner cannot do those.
 
 Output strictly the requested JSON."""
 
@@ -117,20 +130,31 @@ def parse_verdict(data: Any, n_beats: int, shape: str) -> VerifyResult:
     if shape == "single_stretch":
         cuts = []  # one continuous stretch has no cuts
 
-    fixes = [f.strip()[:200] for f in (data.get("fixes") or []) if isinstance(f, str) and f.strip()][:MAX_FIXES]
+    raw_fixes = [f.strip()[:200] for f in (data.get("fixes") or []) if isinstance(f, str) and f.strip()]
+    fixes = [f for f in raw_fixes if not any(word in f.lower() for word in NON_ACTIONABLE)][:MAX_FIXES]
+    if len(raw_fixes) > len(fixes) and len(raw_fixes) <= MAX_FIXES + len(fixes):
+        notes.append(f"ignored {len(raw_fixes) - len(fixes)} suggestion(s) the planner cannot act on")
+    point_ok = bool(point) and point.lower() != "unclear"
+    cuts_ok = len(cuts) <= MAX_TOLERATED_CUTS
 
     if shape == "montage" and not meaning and verdict != "fail":
         notes.append("meaning not preserved: hard fail for a montage")
         verdict = "fail"
-    if verdict == "pass" and (not hook_ok or cuts or not point or point.lower() == "unclear"):
+    if verdict == "pass" and not (hook_ok and cuts_ok and point_ok):
         notes.append("verdict pass downgraded to revise: hook, cuts or main point not satisfied")
         verdict = "revise"
+    elif verdict == "revise" and not fixes and hook_ok and meaning and point_ok and cuts_ok:
+        notes.append("verdict revise upgraded to pass: nothing the planner could change")
+        verdict = "pass"
+    if verdict == "pass" and cuts:
+        notes.append("passed with one beat flagged as confusing: " + ", ".join(map(str, cuts)))
     if verdict == "revise" and not fixes:
         if not hook_ok:
-            fixes.append("Open with a stronger hook.")
-        if cuts:
-            fixes.append("Smooth the cut into beat " + ", ".join(map(str, cuts)) + ".")
-        if not point or point.lower() == "unclear":
+            fixes.append("Start the reel on a complete, self-contained sentence that grabs attention.")
+        if not cuts_ok:
+            fixes.append("Choose different sentences so beat " + ", ".join(map(str, cuts))
+                         + " follows logically from the one before it.")
+        if not point_ok:
             fixes.append("Make the main point clearer.")
         if not fixes:
             fixes.append("Choose different sentences so the reel stands on its own.")

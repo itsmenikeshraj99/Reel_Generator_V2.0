@@ -180,6 +180,7 @@ async def run_select(pipe: Any, video_path: str) -> bool:
         "beats": len(selection.plan["beats"]),
         "revisions": selection.revisions,
         "used_fallback": selection.used_fallback,
+        "mode": selection.mode,
         "verdict": (selection.verifier or {}).get("verdict"),
         "total_seconds": selection.total_seconds,
         "history": selection.history,

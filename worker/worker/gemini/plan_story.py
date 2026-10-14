@@ -1,6 +1,6 @@
 """Smart pipeline, call 2: plan the story of the reel.
 
-Prompt version: plan-story-v1
+Prompt version: plan-story-v2
 
 A text-only Gemini call turns the outline and the numbered sentence index
 into a plan: one strong stretch or a montage of beats, each a range of
@@ -50,11 +50,17 @@ PLAN_SCHEMA_DICT: dict = {
 }
 
 
+SINGLE_STRETCH_ONLY = f"""THIS TIME the shape MUST be "single_stretch" with exactly ONE beat: one contiguous stretch of
+{pr.SINGLE_MIN_S:.0f}-{pr.SINGLE_MAX_S:.0f} seconds that begins at the start of a thought, makes a complete point on its
+own, and ends at a natural stopping point. A montage was already tried and did not work."""
+
+
 def build_prompt(
     understanding: Understanding,
     sentences: Sequence[Any],
     target_seconds: int,
     feedback: Optional[Sequence[str]] = None,
+    force_shape: Optional[str] = None,
 ) -> str:
     rules = f"""You are a senior editor planning ONE short vertical reel from a longer video.
 The reel must make sense to someone who never saw the full video: a viewer should be able to
@@ -78,11 +84,18 @@ Rules:
   needs_context to true, or start a sentence earlier.
 - label: at most {pr.LABEL_MAX} characters, shown on screen for montage beats.
 - join: how this beat connects to the NEXT one: continuous, topic_change or point_change.
+- Start every beat on a sentence that stands on its own. Never start on a filler or a joining word
+  ("yeah", "so", "and", "okay", "because") or in the middle of a thought; begin one sentence earlier instead.
+- The cuts between beats are plain hard cuts (transitions are added later), so plan the flow of ideas: each
+  beat should follow logically from the one before, and no beat may refer to something the viewer was not told.
+- The video may be a conversation between people. Prefer passages where one speaker finishes a complete point.
 - reason: ONE sentence explaining why the reel makes sense as a whole.
 - mood: one word for the music (for example calm, upbeat, serious, inspiring).
 Output strictly the requested JSON."""
 
-    parts = [rules, "OUTLINE:\n" + understanding.outline_text(),
+
+
+    parts = [rules] + ([SINGLE_STRETCH_ONLY] if force_shape == "single_stretch" else []) + ["OUTLINE:\n" + understanding.outline_text(),
              "SENTENCE INDEX:\n" + format_sentence_index(sentences)]
     if feedback:
         parts.append(
@@ -124,6 +137,7 @@ async def plan_story(
     target_seconds: Optional[int] = None,
     call: Optional[Callable[[str, dict], str]] = None,
     max_attempts: int = MAX_PLAN_ATTEMPTS,
+    force_shape: Optional[str] = None,
 ) -> StoryPlanResult:
     """Ask for a plan, check it with the rules, retry once with the errors."""
     if target_seconds is None:
@@ -136,7 +150,7 @@ async def plan_story(
     notes: List[str] = list(feedback or [])
     for attempt in range(1, max_attempts + 1):
         result.attempts = attempt
-        prompt = build_prompt(understanding, sentences, target_seconds, notes)
+        prompt = build_prompt(understanding, sentences, target_seconds, notes, force_shape)
         try:
             text = await asyncio.to_thread(call, prompt, PLAN_SCHEMA_DICT)
             data = _parse_json(text)
@@ -149,6 +163,12 @@ async def plan_story(
 
         checked = pr.validate_plan(data, sentences)
         result.rule_result = checked
+        if checked.ok and force_shape and checked.plan["shape"] != force_shape:
+            wrong = f"the shape must be {force_shape}, but the answer was {checked.plan['shape']}"
+            result.problems.append(wrong)
+            notes = list(feedback or []) + [wrong]
+            logger.warning("Plan attempt %d rejected: %s", attempt, wrong)
+            continue
         if checked.ok:
             result.ok, result.plan = True, checked.plan
             return result

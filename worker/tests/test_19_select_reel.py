@@ -41,6 +41,9 @@ MONTAGE = {"shape": "montage", "reason": "One argument.",
            "beats": [beat("S2", "S2", "Hook"), beat("S5", "S6"), beat("S12", "S13"), beat("S20", "S20")]}
 
 
+SINGLE = {"shape": "single_stretch", "reason": "One complete idea.", "beats": [beat("S5", "S9", "Complete idea")]}
+
+
 def outline(**kw):
     from worker.gemini.understand import Understanding
 
@@ -60,13 +63,21 @@ def verdict(kind="pass", fixes=None):
 class Rig:
     """Fake planner/draft/verifier that record what the loop asks of them."""
 
-    def __init__(self, plans, verdicts):
-        self.plans, self.verdicts = list(plans), list(verdicts)
+    def __init__(self, plans, verdicts, stretch_plans=()):
+        self.plans, self.verdicts, self.stretch_plans = list(plans), list(verdicts), list(stretch_plans)
         self.plan_feedback, self.drafts, self.verified = [], [], []
+        self.stretch_feedback = []
 
-    async def plan_fn(self, understanding, sentences, feedback=None):
+    async def plan_fn(self, understanding, sentences, feedback=None, force_shape=None):
         from worker.text import plan_rules as pr
 
+        if force_shape == "single_stretch":  # the "ask for one coherent stretch" call
+            self.stretch_feedback.append(feedback)
+            p = self.stretch_plans.pop(0) if self.stretch_plans else None
+            if p is None:
+                return SimpleNamespace(ok=False, plan=None, problems=["no stretch offered"])
+            res = pr.validate_plan(p, sentences)
+            return SimpleNamespace(ok=res.ok, plan=res.plan, problems=res.errors)
         self.plan_feedback.append(feedback)
         p = self.plans.pop(0)
         if p is None:
@@ -257,9 +268,11 @@ async def main() -> bool:
     with test_case("the fallback, planner failures and an unavailable verifier are recorded too") as t:
         rig = Rig([MONTAGE] * 3, [verdict("revise")] * 3 + [verdict("pass")])
         s = await rig.run()
-        assert_([a["attempt"] for a in s.attempts] == [1, 2, 3, "fallback"], f"{[a['attempt'] for a in s.attempts]}")
+        assert_([a["attempt"] for a in s.attempts] == [1, 2, 3, "ai_stretch", "fallback"], f"{[a['attempt'] for a in s.attempts]}")
+        assert_(s.attempts[3]["planner_problems"] == ["no stretch offered"], f"{s.attempts[3]}")
         fb = s.attempts[-1]
         assert_(fb["plan"]["shape"] == "single_stretch" and fb["verdict"]["verdict"] == "pass", f"{fb}")
+        assert_(s.mode == "code_stretch", f"{s.mode}")
         rig = Rig([None], [verdict("pass")])
         s = await rig.run()
         assert_(s.attempts[0]["planner_problems"] == ["bad"], f"{s.attempts[0]}")
@@ -275,6 +288,57 @@ async def main() -> bool:
         s = await rig.run()
         size = len(json.dumps(s.attempts))
         assert_(size < 8000, f"{size} bytes")
+    results.append(t["passed"])
+
+    with test_case("after the montages fail, an AI-chosen single stretch is tried first and used if it passes") as t:
+        rig = Rig([MONTAGE] * 3, [verdict("revise", ["Start beat 2 at S4"])] * 3 + [verdict("pass")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(s.ok and s.mode == "ai_stretch" and s.used_fallback and not s.needs_review, f"{s.mode} {s.needs_review}")
+        assert_(s.plan["beats"][0]["from_id"] == "S5" and s.plan["shape"] == "single_stretch", f"{s.plan}")
+        assert_(rig.verified == ["montage"] * 3 + ["single_stretch"], f"the code fallback must not run: {rig.verified}")
+        assert_(rig.stretch_feedback[0][0] == "A montage was tried and did not pass." and "Start beat 2 at S4" in rig.stretch_feedback[0],
+                f"{rig.stretch_feedback}")
+        assert_(s.attempts[-1]["attempt"] == "ai_stretch" and s.attempts[-1]["verdict"]["verdict"] == "pass", f"{s.attempts[-1]}")
+    results.append(t["passed"])
+
+    with test_case("a fail verdict also gets the AI stretch; an AI stretch that does not pass falls through to the code stretch") as t:
+        rig = Rig([MONTAGE], [verdict("fail"), verdict("pass")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(s.mode == "ai_stretch" and len(rig.plan_feedback) == 1, f"{s.mode} {len(rig.plan_feedback)}")
+        rig = Rig([MONTAGE], [verdict("fail"), verdict("revise"), verdict("pass")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(s.mode == "code_stretch" and not s.needs_review and rig.verified == ["montage", "single_stretch", "single_stretch"], f"{s.mode} {rig.verified}")
+    results.append(t["passed"])
+
+    with test_case("if nothing passes, the AI-chosen stretch is shipped (flagged) rather than the code-chosen one") as t:
+        rig = Rig([MONTAGE], [verdict("fail"), verdict("revise"), verdict("revise")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(s.ok and s.mode == "ai_stretch" and s.needs_review and s.plan["beats"][0]["from_id"] == "S5", f"{s.mode} {s.plan}")
+        assert_(s.verifier["verdict"] == "revise", f"{s.verifier}")
+    results.append(t["passed"])
+
+    with test_case("no AI stretch is requested when no montage was ever judged; an unverifiable AI stretch ships flagged") as t:
+        rig = Rig([None], [verdict("pass")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(rig.stretch_feedback == [] and s.mode == "code_stretch", f"{rig.stretch_feedback} {s.mode}")
+        rig = Rig([MONTAGE], [verdict("fail"), RuntimeError("503")], stretch_plans=[SINGLE])
+        s = await rig.run()
+        assert_(s.mode == "ai_stretch" and s.needs_review and s.verifier is None, f"{s.mode} {s.needs_review}")
+    results.append(t["passed"])
+
+    with test_case("code fallback: avoids opening mid-thought ('yeah like...') when a clean start is nearby") as t:
+        words2, sents2 = make_words(), None
+        sents2 = make_sentences(words2)
+        # S10 opens with a filler; S9 is a complete sentence right before it.
+        sents2[9]["text"] = "yeah like right now it is not here"
+        sents2[8]["text"] = "Here is the experiment they ran."
+        o = outline(key_points=[{"title": "Study", "from_id": "S10", "to_id": "S11"}], hook_candidates=[])
+        p = best_single_stretch(o, sents2, 38.0)
+        assert_(p and p["beats"][0]["from_id"] in ("S9", "S8", "S7"), f"started mid-thought: {p['beats'][0] if p else p}")
+        # with no filler it starts exactly where the key point starts
+        sents2[9]["text"] = "The study was done in Texas."
+        p = best_single_stretch(o, sents2, 38.0)
+        assert_(p["beats"][0]["from_id"] == "S10", f"{p['beats'][0]}")
     results.append(t["passed"])
 
     with test_case("random verdict sequences: the loop always ends, with a valid result or ok=False") as t:
