@@ -53,6 +53,10 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # How the picture is placed on the 9:16 canvas: "fit" = whole frame, centred
+    # on black, never cropped or stretched; "crop" = subject-aware 9:16 crop.
+    REFRAME_MODE: str = "fit"
+
     # Master switch for the smart reel pipeline (speech-to-text + sentence
     # planning + verifier). Off = today's pipeline, unchanged.
     SMART_PIPELINE_ENABLED: bool = False
@@ -90,6 +94,14 @@ class WorkerSettings(BaseSettings):
         v = v.strip().lower()
         if v not in ("gemini", "groq"):
             raise ValueError(f"ASR_PROVIDER={v!r} must be 'gemini' or 'groq'")
+        return v
+
+    @field_validator("REFRAME_MODE")
+    @classmethod
+    def _validate_reframe_mode(cls, v: str) -> str:
+        v = v.strip().lower()
+        if v not in ("fit", "crop"):
+            raise ValueError(f"REFRAME_MODE={v!r} must be 'fit' or 'crop'")
         return v
 
     @field_validator("REEL_TARGET_SECONDS")

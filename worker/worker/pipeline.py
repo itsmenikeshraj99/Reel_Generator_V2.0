@@ -474,23 +474,29 @@ class Pipeline:
             #    step already runs a 9:16 letterbox pad so the output is
             #    still valid 1080x1920.
             reframe_ok = False
-            try:
-                # Pass self to enable heartbeats during long render
-                reframe_ok = await reframe_video(self, video_path, reframed_path)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(
-                    "reframe_video crashed for %s (%s); falling back to raw cut",
-                    self.video_id, exc,
-                )
+            if settings.REFRAME_MODE == "fit":
+                # Fit mode: no subject crop. The stitch step scales the whole
+                # frame onto the black 9:16 canvas, centred and un-stretched.
+                quality = "fit"
+            else:
+                try:
+                    # Pass self to enable heartbeats during long render
+                    reframe_ok = await reframe_video(self, video_path, reframed_path)
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning(
+                        "reframe_video crashed for %s (%s); falling back to raw cut",
+                        self.video_id, exc,
+                    )
 
             if reframe_ok:
                 stitch_input = reframed_path
             else:
-                quality = "raw_cut"
-                logger.warning(
-                    "Reframe unavailable for %s; shipping raw-cut 9:16 letterbox",
-                    self.video_id,
-                )
+                if quality != "fit":
+                    quality = "raw_cut"
+                    logger.warning(
+                        "Reframe unavailable for %s; shipping raw-cut 9:16 letterbox",
+                        self.video_id,
+                    )
                 stitch_input = video_path
 
             # 2. Stitch. Failure here is fatal (no further fallback).
