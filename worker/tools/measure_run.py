@@ -104,6 +104,35 @@ def format_summary(summary: Dict[str, Any], outcome: str) -> str:
     return "\n".join(lines)
 
 
+def format_attempts(attempts: List[Dict[str, Any]]) -> str:
+    """Readable text for the per-attempt records saved in reels.meta."""
+    lines: List[str] = []
+    for a in attempts:
+        head = f"Attempt {a.get('attempt')}"
+        v = a.get("verdict")
+        if v:
+            head += f": verdict {v.get('verdict')}"
+        lines.append(head)
+        for note in a.get("feedback_given", []):
+            lines.append(f"    told the planner: {note}")
+        plan = a.get("plan")
+        if plan:
+            lines.append(f"    plan: {plan.get('shape')}, {plan.get('total')}s - {plan.get('reason')}")
+            lines += [f"      {b}" for b in plan.get("beats", [])]
+        for key in ("planner_error", "planner_problems", "snap_errors", "rule_repairs"):
+            if a.get(key):
+                lines.append(f"    {key}: {a[key]}")
+        if a.get("verifier_unavailable"):
+            lines.append("    verifier unavailable")
+        if v:
+            lines.append(f"    verifier: hook_ok={v.get('hook_ok')}, meaning_preserved={v.get('meaning_preserved')}, "
+                         f"abrupt_cuts={v.get('abrupt_cuts')}")
+            lines.append(f"    main point it saw: {v.get('main_point_stated')}")
+            lines += [f"    fix: {f}" for f in v.get("fixes", [])]
+            lines += [f"    note: {n}" for n in v.get("notes", [])]
+    return "\n".join(lines)
+
+
 def _usage(response: Any) -> Dict[str, int]:
     u = getattr(response, "usage_metadata", None)
     return {
@@ -309,6 +338,9 @@ def main() -> int:
         for b in plan["beats"]:
             print(f"  {b['role']:<8} {b['from_id']}-{b['to_id']} {b['start']:.1f}-{b['end']:.1f}s [{b['label']}] {b.get('why', '')}")
         print("Verifier:", json.dumps((result["plan"] or {}).get("verifier"), ensure_ascii=False))
+    attempts = ((result.get("reel_meta") or {}).get("smart") or {}).get("attempts")
+    if attempts:
+        print("\nHow the reel was chosen:\n" + format_attempts(attempts))
     if args.json_path:
         with open(args.json_path, "w", encoding="utf-8") as f:
             json.dump({"outcome": outcome, **summary}, f, indent=2)
