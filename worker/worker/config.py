@@ -53,6 +53,10 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # How many times to retry the SAME Gemini model on a temporary error
+    # (overload, 5xx, timeout) before falling to the next model (0-5).
+    GEMINI_TRANSIENT_RETRIES: int = 2
+
     # How the picture is placed on the 9:16 canvas: "fit" = whole frame, centred
     # on black, never cropped or stretched; "crop" = subject-aware 9:16 crop.
     REFRAME_MODE: str = "fit"
@@ -94,6 +98,13 @@ class WorkerSettings(BaseSettings):
         v = v.strip().lower()
         if v not in ("gemini", "groq"):
             raise ValueError(f"ASR_PROVIDER={v!r} must be 'gemini' or 'groq'")
+        return v
+
+    @field_validator("GEMINI_TRANSIENT_RETRIES")
+    @classmethod
+    def _validate_transient_retries(cls, v: int) -> int:
+        if not 0 <= v <= 5:
+            raise ValueError(f"GEMINI_TRANSIENT_RETRIES={v} must be between 0 and 5")
         return v
 
     @field_validator("REFRAME_MODE")
