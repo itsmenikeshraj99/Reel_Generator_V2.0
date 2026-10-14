@@ -41,15 +41,44 @@ async def main() -> bool:
         assert_(r.verdict == "revise", f"{r.verdict}")
     results.append(t["passed"])
 
-    with test_case("a pass with a weak hook, abrupt cuts or unclear point is downgraded to revise") as t:
-        for change in ({"hook_ok": False}, {"abrupt_cuts": [2]}, {"main_point_stated": "unclear"}, {"main_point_stated": ""}):
+    with test_case("a pass with a weak hook, two confusing beats or an unclear point is downgraded to revise") as t:
+        for change in ({"hook_ok": False}, {"abrupt_cuts": [2, 3]}, {"main_point_stated": "unclear"}, {"main_point_stated": ""}):
             r = v.parse_verdict(dict(PASS, **change), 3, "montage")
             assert_(r.verdict == "revise" and r.fixes and r.notes, f"{change}: {r}")
     results.append(t["passed"])
 
+    with test_case("one beat flagged as confusing still passes, and is noted") as t:
+        r = v.parse_verdict(dict(PASS, abrupt_cuts=[2]), 3, "montage")
+        assert_(r.verdict == "pass" and r.abrupt_cuts == [2], f"{r}")
+        assert_(any("flagged as confusing" in n for n in r.notes), f"{r.notes}")
+    results.append(t["passed"])
+
+    with test_case("suggestions the planner cannot act on (voiceover, transitions, audio...) are dropped") as t:
+        data = dict(PASS, verdict="revise", fixes=[
+            "Add a brief transition text or voiceover to link the beats.", "Increase the pause length between beats.",
+            "Ensure audio levels are consistent.", "Smooth the transition between beat 2 and 3.",
+            "Start beat 2 at the sentence that introduces the study."], hook_ok=False)
+        r = v.parse_verdict(data, 3, "montage")
+        assert_(r.fixes == ["Start beat 2 at the sentence that introduces the study."], f"{r.fixes}")
+    results.append(t["passed"])
+
+    with test_case("a revise with nothing the planner can change becomes a pass; with a real fix it stays revise") as t:
+        only_noise = dict(PASS, verdict="revise", abrupt_cuts=[2, 3], fixes=["Add a voiceover.", "Smooth the transitions."])
+        r = v.parse_verdict(only_noise, 3, "montage")
+        assert_(r.verdict == "revise" and r.fixes, f"two confusing beats must still be revised: {r}")
+        r = v.parse_verdict(dict(only_noise, abrupt_cuts=[2]), 3, "montage")
+        assert_(r.verdict == "pass" and any("upgraded" in n for n in r.notes), f"{r}")
+        r = v.parse_verdict(dict(PASS, verdict="revise", fixes=["Use S7 instead of S5."]), 3, "montage")
+        assert_(r.verdict == "revise" and r.fixes == ["Use S7 instead of S5."], f"{r}")
+        r = v.parse_verdict(dict(only_noise, abrupt_cuts=[], hook_ok=False), 3, "montage")
+        assert_(r.verdict == "revise", "a weak hook is never upgraded")
+        r = v.parse_verdict(dict(only_noise, abrupt_cuts=[], meaning_preserved=False), 3, "montage")
+        assert_(r.verdict == "fail", "lost meaning is still a hard fail")
+    results.append(t["passed"])
+
     with test_case("revise always comes with usable fixes") as t:
         r = v.parse_verdict(dict(PASS, verdict="revise", hook_ok=False, abrupt_cuts=[2, 3]), 3, "montage")
-        assert_(any("hook" in f.lower() for f in r.fixes) and any("2, 3" in f for f in r.fixes), f"{r.fixes}")
+        assert_(any("self-contained" in f.lower() for f in r.fixes) and any("2, 3" in f for f in r.fixes), f"{r.fixes}")
         r = v.parse_verdict(dict(PASS, verdict="revise", fixes=["Use S7 instead"]), 3, "montage")
         assert_(r.fixes == ["Use S7 instead"], f"{r.fixes}")
     results.append(t["passed"])
@@ -89,7 +118,9 @@ async def main() -> bool:
         s = v.VERIFY_SCHEMA_DICT
         assert_(set(s["required"]) == set(s["properties"]), "required")
         assert_(s["properties"]["verdict"]["enum"] == list(v.VERDICTS), "verdict enum")
-        assert_("verify-v1" in v.__doc__ and "abrupt_cuts" in v.VERIFY_PROMPT, "prompt")
+        assert_("verify-v2" in v.__doc__ and "abrupt_cuts" in v.VERIFY_PROMPT, "prompt")
+        low = v.VERIFY_PROMPT.lower()
+        assert_("hard cuts" in low and "do not judge" in low and "planner cannot do those" in low, "v2 guidance missing")
     results.append(t["passed"])
 
     class FakeFiles:
@@ -161,7 +192,8 @@ async def main() -> bool:
             r = v.parse_verdict(data, rng.randint(1, 5), shape)
             assert_(r.verdict in v.VERDICTS, "verdict")
             if r.verdict == "pass":
-                assert_(r.hook_ok and not r.abrupt_cuts and r.main_point_stated and r.main_point_stated.lower() != "unclear", f"{r}")
+                assert_(r.hook_ok and len(r.abrupt_cuts) <= v.MAX_TOLERATED_CUTS and r.main_point_stated
+                        and r.main_point_stated.lower() != "unclear", f"{r}")
                 assert_(shape == "single_stretch" or r.meaning_preserved, f"montage pass with lost meaning: {r}")
             if r.verdict == "revise":
                 assert_(r.fixes and len(r.fixes) <= v.MAX_FIXES + 3, f"{r.fixes}")

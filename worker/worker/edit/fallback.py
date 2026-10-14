@@ -9,6 +9,10 @@ from typing import Any, Dict, List, Optional, Sequence
 
 from worker.gemini.understand import Understanding
 from worker.text import plan_rules as pr
+from worker.text.starts import starts_cleanly
+
+# A stretch that opens mid-thought is as bad as one 15 seconds off the target length.
+CLEAN_START_PENALTY_S = 15.0
 
 
 def _fit(sents: List[Dict[str, Any]], i0: int, i1: int, target: float) -> Optional[tuple]:
@@ -22,22 +26,27 @@ def _fit(sents: List[Dict[str, Any]], i0: int, i1: int, target: float) -> Option
     def note(a: int, b: int) -> None:
         d = dur(a, b)
         if pr.SINGLE_MIN_S <= d <= pr.SINGLE_MAX_S:
-            options.append((round(abs(d - target), 3), a, b))
+            penalty = 0.0 if starts_cleanly(sents[a]["text"]) else CLEAN_START_PENALTY_S
+            options.append((round(abs(d - target) + penalty, 3), a, b))
 
-    note(i0, i1)
-    a, b = i0, i1  # grow: forward first, then backward
-    while dur(a, b) < target:
-        if b + 1 < len(sents):
-            b += 1
-        elif a > 0:
-            a -= 1
-        else:
+    for back in range(0, 4):  # also try starting up to 3 sentences earlier, to find a clean start
+        a0 = i0 - back
+        if a0 < 0:
             break
-        note(a, b)
-    a, b = i0, i1  # shrink from the end while too long
-    while dur(a, b) > target and b > a:
-        b -= 1
-        note(a, b)
+        note(a0, i1)
+        a, b = a0, i1  # grow: forward first, then backward
+        while dur(a, b) < target:
+            if b + 1 < len(sents):
+                b += 1
+            elif a > 0:
+                a -= 1
+            else:
+                break
+            note(a, b)
+        a, b = a0, i1  # shrink from the end while too long
+        while dur(a, b) > target and b > a:
+            b -= 1
+            note(a, b)
 
     if not options:
         return None

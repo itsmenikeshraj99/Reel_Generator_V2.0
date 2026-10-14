@@ -39,6 +39,7 @@ class Selection:
     verifier: Optional[Dict[str, Any]] = None
     needs_review: bool = False
     used_fallback: bool = False
+    mode: str = "montage"  # montage | ai_stretch | code_stretch
     revisions: int = 0
     total_seconds: float = 0.0
     history: List[str] = field(default_factory=list)
@@ -96,7 +97,9 @@ async def select_reel(
         finally:
             _remove(draft)
 
-    def finish(plan, snapped, verdict: Optional[VerifyResult], *, fallback: bool, review: bool) -> Selection:
+    def finish(plan, snapped, verdict: Optional[VerifyResult], *, fallback: bool, review: bool,
+               mode: str = "montage") -> Selection:
+        out.mode = mode
         out.ok, out.plan, out.segments = True, plan, snapped.segments
         out.verifier = verdict.to_dict() if verdict else None
         out.used_fallback, out.needs_review = fallback, review
@@ -144,7 +147,41 @@ async def select_reel(
             break
         feedback = list(verdict.fixes)
 
-    # Fallback: the best single stretch, verified once more.
+    # Second chance: ask the planner for ONE coherent stretch (only if a montage was actually judged).
+    ai_candidate: Optional[tuple] = None
+    if last_candidate is not None:
+        montage_fixes = list(last_candidate[2].fixes)
+        rec: Dict[str, Any] = {"attempt": "ai_stretch"}
+        out.attempts.append(rec)
+        try:
+            story = await plan_fn(
+                understanding, sentences,
+                feedback=["A montage was tried and did not pass."] + montage_fixes,
+                force_shape="single_stretch",
+            )
+        except Exception as exc:  # noqa: BLE001
+            story = None
+            rec["planner_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
+        if story is not None and not story.ok:
+            rec["planner_problems"] = list(story.problems)[:3]
+        if story is not None and story.ok:
+            rec["plan"] = describe_plan(story.plan)
+            ai_snapped = snap_plan(story.plan, sentences, words, silences, media_duration)
+            if not ai_snapped.ok:
+                rec["snap_errors"] = list(ai_snapped.errors)[:3]
+            else:
+                verdict = await check(story.plan, ai_snapped)
+                if verdict is None:
+                    rec["verifier_unavailable"] = True
+                    out.history.append("ai single stretch: verifier unavailable, shipped flagged")
+                    return finish(story.plan, ai_snapped, None, fallback=True, review=True, mode="ai_stretch")
+                rec["verdict"] = verdict.to_dict()
+                out.history.append(f"ai single stretch: verdict {verdict.verdict}")
+                if verdict.verdict == "pass":
+                    return finish(story.plan, ai_snapped, verdict, fallback=True, review=False, mode="ai_stretch")
+                ai_candidate = (story.plan, ai_snapped, verdict)
+
+    # Last resort: the best single stretch picked by code, verified once more.
     fb_plan = best_single_stretch(understanding, sentences, target_seconds)
     fb_snapped = snap_plan(fb_plan, sentences, words, silences, media_duration) if fb_plan else None
     if fb_plan and fb_snapped and fb_snapped.ok:
@@ -155,9 +192,15 @@ async def select_reel(
         })
         passed = verdict is not None and verdict.verdict == "pass"
         out.history.append("fallback single stretch: " + ("pass" if passed else "not passed, shipped flagged"))
-        return finish(fb_plan, fb_snapped, verdict, fallback=True, review=not passed)
+        if not passed and ai_candidate:  # an AI-chosen stretch beats a code-chosen one that also failed
+            plan, snapped, ai_verdict = ai_candidate
+            return finish(plan, snapped, ai_verdict, fallback=True, review=True, mode="ai_stretch")
+        return finish(fb_plan, fb_snapped, verdict, fallback=True, review=not passed, mode="code_stretch")
 
     out.history.append("fallback single stretch could not be built")
+    if ai_candidate:
+        plan, snapped, verdict = ai_candidate
+        return finish(plan, snapped, verdict, fallback=True, review=True, mode="ai_stretch")
     if last_candidate:
         plan, snapped, verdict = last_candidate
         return finish(plan, snapped, verdict, fallback=False, review=True)

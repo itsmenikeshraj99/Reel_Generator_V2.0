@@ -59,7 +59,27 @@ async def main() -> bool:
         assert_("NOT ACCEPTED" not in p, "feedback block must be absent without feedback")
         assert_("NOT ACCEPTED" in ps.build_prompt(outline, SENTS, 38, ["be shorter"]) and "be shorter" in
                 ps.build_prompt(outline, SENTS, 38, ["be shorter"]), "feedback missing")
-        assert_("plan-story-v1" in ps.__doc__, "prompt version")
+        assert_("plan-story-v2" in ps.__doc__, "prompt version")
+        low = p.lower()
+        for needle in ("never start on a filler", "hard cuts", "conversation", "stands on its own"):
+            assert_(needle in low, f"v2 guidance missing: {needle!r}")
+        assert_("MUST be \"single_stretch\"" not in p, "the one-stretch block must only appear on request")
+    results.append(t["passed"])
+
+    with test_case("force_shape asks for exactly one stretch and rejects a montage answer") as t:
+        single = {"shape": "single_stretch", "reason": "One clear idea.", "beats": [beat("S5", "S9", "Whole idea")]}
+        p = ps.build_prompt(outline, SENTS, 38, None, "single_stretch")
+        assert_("MUST be \"single_stretch\"" in p and "A montage was already tried" in p, "instruction missing")
+        fake = Fake(GOOD_PLAN, single)  # first answer is a montage: not allowed this time
+        r = await ps.plan_story(outline, SENTS, target_seconds=38, call=fake, force_shape="single_stretch")
+        assert_(r.ok and r.plan["shape"] == "single_stretch" and r.attempts == 2, f"{r.problems}")
+        assert_("the shape must be single_stretch" in fake.prompts[1], "rejection reason not fed back")
+        r = await ps.plan_story(outline, SENTS, target_seconds=38, call=Fake(GOOD_PLAN, GOOD_PLAN), force_shape="single_stretch")
+        assert_(not r.ok and len(r.problems) == 2, f"{r}")
+        r = await ps.plan_story(outline, SENTS, target_seconds=38, call=Fake(single), force_shape="single_stretch")
+        assert_(r.ok and r.attempts == 1, "a valid single stretch passes first time")
+        r = await ps.plan_story(outline, SENTS, target_seconds=38, call=Fake(single))
+        assert_(r.ok, "without force_shape either shape is fine")
     results.append(t["passed"])
 
     with test_case("schema fields match what the rules read") as t:
