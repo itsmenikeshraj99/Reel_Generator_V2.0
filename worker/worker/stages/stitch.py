@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from typing import List
 
+from worker.edit.canvas import fit_filter
 from worker.services.supabase import supabase_client
 
 logger = logging.getLogger("stage_stitch")
@@ -84,30 +85,16 @@ async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_pa
             for clip in temp_clips:
                 f.write(f"file '{clip}'\n")
 
-        # 3. Stitch. We force the output to 1080x1920 (9:16 portrait) here
-        #    so the raw-cut fallback path (where stitch_input is the
-        #    un-reframed source) still produces a properly-shaped reel.
-        #    When the reframed path is used, the per-clip is already
-        #    1080x1920 and the scale+pad are no-ops; the cost is one
-        #    extra re-encode pass which is cheap (concat copy can't
-        #    combine clips from different filter graphs).
-        #
-        #    IMPORTANT: use literal pad offsets (not `(ow-iw)/2` etc).
-        #    ffmpeg's runtime arithmetic in pad offsets can fail with
-        #    `Error reinitializing filters!` on some inputs. With
-        #    force_original_aspect_ratio=decrease the padded dim is
-        #    always 1080x1080 (square) sitting in a 1080x1920 frame,
-        #    so the y offset is literally 420 = (1920-1080)/2.
+        # 3. Stitch onto the 720x1280 (9:16 portrait) canvas. The whole frame
+        #    is scaled to fit and centred on black (never cropped or
+        #    stretched); a reframed 9:16 input passes through unchanged.
         _run_ffmpeg([
             "ffmpeg", "-y",
             "-threads", "1",
             "-filter_threads", "1",
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
-            "-vf",
-            "scale=720:1280:force_original_aspect_ratio=decrease,"
-            "pad=720:1280:0:280:black,"
-            "setsar=1",
+            "-vf", fit_filter(),
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
             "-af", "aresample=async=1",  # fix any A/V drift between cuts
