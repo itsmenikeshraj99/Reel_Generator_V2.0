@@ -42,6 +42,20 @@ class Selection:
     revisions: int = 0
     total_seconds: float = 0.0
     history: List[str] = field(default_factory=list)
+    # One record per attempt (plan summary, verdict and fixes, problems), for reels.meta.
+    attempts: List[Dict[str, Any]] = field(default_factory=list)
+
+
+def describe_plan(plan: Dict[str, Any]) -> Dict[str, Any]:
+    """Compact, readable summary of a plan for logs and reels.meta."""
+    beats = plan.get("beats", [])
+    return {
+        "shape": plan.get("shape"),
+        "reason": str(plan.get("reason", ""))[:200],
+        "total": round(sum(float(b.get("duration", 0) or 0) for b in beats), 1),
+        "beats": [f"{b.get('role', '')} {b.get('from_id')}-{b.get('to_id')} {float(b.get('duration', 0) or 0):.0f}s {b.get('label', '')}".strip()
+                  for b in beats],
+    }
 
 
 def _remove(path: Optional[str]) -> None:
@@ -91,23 +105,37 @@ async def select_reel(
 
     for attempt in range(max_revisions + 1):
         out.revisions = attempt
+        rec: Dict[str, Any] = {"attempt": attempt + 1}
+        if feedback:
+            rec["feedback_given"] = list(feedback)[:5]
+        out.attempts.append(rec)
         try:
             story = await plan_fn(understanding, sentences, feedback=feedback)
         except Exception as exc:  # noqa: BLE001
+            rec["planner_error"] = f"{type(exc).__name__}: {str(exc)[:120]}"
             out.history.append(f"attempt {attempt + 1}: planner crashed ({type(exc).__name__}: {str(exc)[:120]})")
             break
         if not story.ok:
+            rec["planner_problems"] = list(story.problems)[:3]
             out.history.append(f"attempt {attempt + 1}: planner gave no valid plan ({'; '.join(story.problems)[:200]})")
             break
+        rec["plan"] = describe_plan(story.plan)
+        repairs = getattr(getattr(story, "rule_result", None), "repairs", None)
+        if repairs:
+            rec["rule_repairs"] = list(repairs)[:5]
         snapped = snap_plan(story.plan, sentences, words, silences, media_duration)
         if not snapped.ok:
+            rec["snap_errors"] = list(snapped.errors)[:3]
             out.history.append(f"attempt {attempt + 1}: snapping failed ({'; '.join(snapped.errors)})")
             feedback = list(snapped.errors)
             continue
 
         verdict = await check(story.plan, snapped)
         if verdict is None:  # cannot verify: ship unverified, flagged
+            rec["verifier_unavailable"] = True
             return finish(story.plan, snapped, None, fallback=False, review=True)
+        rec["verdict"] = verdict.to_dict()
+        logger.info("Attempt %d verdict %s; fixes: %s", attempt + 1, verdict.verdict, verdict.fixes)
         out.history.append(f"attempt {attempt + 1}: verdict {verdict.verdict}")
         last_candidate = (story.plan, snapped, verdict)
         if verdict.verdict == "pass":
@@ -121,6 +149,10 @@ async def select_reel(
     fb_snapped = snap_plan(fb_plan, sentences, words, silences, media_duration) if fb_plan else None
     if fb_plan and fb_snapped and fb_snapped.ok:
         verdict = await check(fb_plan, fb_snapped)
+        out.attempts.append({
+            "attempt": "fallback", "plan": describe_plan(fb_plan),
+            **({"verdict": verdict.to_dict()} if verdict else {"verifier_unavailable": True}),
+        })
         passed = verdict is not None and verdict.verdict == "pass"
         out.history.append("fallback single stretch: " + ("pass" if passed else "not passed, shipped flagged"))
         return finish(fb_plan, fb_snapped, verdict, fallback=True, review=not passed)

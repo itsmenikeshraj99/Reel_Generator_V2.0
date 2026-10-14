@@ -315,7 +315,9 @@ async def main() -> bool:
             return Selection(ok=True, plan={"shape": "montage", "beats": [{}, {}, {}], "reason": "r"},
                              segments=[{"start_time": 1.0, "end_time": 9.0, "title": "t", "reason": ""}],
                              verifier={"verdict": "pass"}, needs_review=False, revisions=1, total_seconds=31.0,
-                             history=["attempt 1: verdict revise", "attempt 2: verdict pass"])
+                             history=["attempt 1: verdict revise", "attempt 2: verdict pass"],
+                             attempts=[{"attempt": 1, "verdict": {"verdict": "revise", "fixes": ["f"]}},
+                                       {"attempt": 2, "verdict": {"verdict": "pass"}}])
 
         async def fake_silences(path, dur=None):
             return [(2.0, 2.5)]
@@ -342,6 +344,7 @@ async def main() -> bool:
         assert_(seen["silences"] == [(2.0, 2.5)] and seen["media_duration"] == 120.0, "silences / duration")
         assert_(pipe.runner_calls == [["ffmpeg", "fake"]], f"draft must use the heartbeat runner: {pipe.runner_calls}")
         extra = pipe.reel_meta_extra
+        assert_([x["verdict"]["verdict"] for x in extra["smart"]["attempts"]] == ["revise", "pass"], "attempts missing from meta")
         assert_(extra["smart_pipeline"] is True and extra["needs_review"] is False and extra["smart"]["revisions"] == 1
                 and extra["smart"]["verdict"] == "pass" and extra["smart"]["asr"]["provider"] == "groq", f"{extra}")
         if os.path.exists(seen["draft"]):

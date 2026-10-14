@@ -239,6 +239,44 @@ async def main() -> bool:
         assert_(best_single_stretch(outline(), []) is None, "empty")
     results.append(t["passed"])
 
+    with test_case("every attempt is recorded with its plan, verdict and the fixes that were sent back") as t:
+        import json
+
+        rig = Rig([MONTAGE, MONTAGE], [verdict("revise", ["Open with S2", "Cut the middle beat"]), verdict("pass")])
+        s = await rig.run()
+        assert_(len(s.attempts) == 2, f"{s.attempts}")
+        a1, a2 = s.attempts
+        assert_(a1["attempt"] == 1 and a1["plan"]["shape"] == "montage" and len(a1["plan"]["beats"]) == 4, f"{a1}")
+        assert_(a1["verdict"]["verdict"] == "revise" and a1["verdict"]["fixes"] == ["Open with S2", "Cut the middle beat"], f"{a1}")
+        assert_("feedback_given" not in a1, "first attempt has no feedback")
+        assert_(a2["feedback_given"] == ["Open with S2", "Cut the middle beat"] and a2["verdict"]["verdict"] == "pass", f"{a2}")
+        assert_(a1["plan"]["beats"][0].startswith("hook S2-S2") and "Hook" in a1["plan"]["beats"][0], f"{a1['plan']['beats']}")
+        json.dumps(s.attempts)  # must be storable as jsonb
+    results.append(t["passed"])
+
+    with test_case("the fallback, planner failures and an unavailable verifier are recorded too") as t:
+        rig = Rig([MONTAGE] * 3, [verdict("revise")] * 3 + [verdict("pass")])
+        s = await rig.run()
+        assert_([a["attempt"] for a in s.attempts] == [1, 2, 3, "fallback"], f"{[a['attempt'] for a in s.attempts]}")
+        fb = s.attempts[-1]
+        assert_(fb["plan"]["shape"] == "single_stretch" and fb["verdict"]["verdict"] == "pass", f"{fb}")
+        rig = Rig([None], [verdict("pass")])
+        s = await rig.run()
+        assert_(s.attempts[0]["planner_problems"] == ["bad"], f"{s.attempts[0]}")
+        rig = Rig([MONTAGE], [RuntimeError("503")])
+        s = await rig.run()
+        assert_(s.attempts[0].get("verifier_unavailable") is True and "verdict" not in s.attempts[0], f"{s.attempts[0]}")
+    results.append(t["passed"])
+
+    with test_case("the recorded attempts stay small enough for reels.meta") as t:
+        import json
+
+        rig = Rig([MONTAGE] * 3, [verdict("revise", ["x" * 150] * 4)] * 3 + [verdict("pass")])
+        s = await rig.run()
+        size = len(json.dumps(s.attempts))
+        assert_(size < 8000, f"{size} bytes")
+    results.append(t["passed"])
+
     with test_case("random verdict sequences: the loop always ends, with a valid result or ok=False") as t:
         rng = random.Random(3)
         for trial in range(300):

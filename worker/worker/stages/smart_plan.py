@@ -183,6 +183,7 @@ async def run_select(pipe: Any, video_path: str) -> bool:
         "verdict": (selection.verifier or {}).get("verdict"),
         "total_seconds": selection.total_seconds,
         "history": selection.history,
+        "attempts": selection.attempts,
     })
     pipe.reel_meta_extra = {
         "smart_pipeline": True,

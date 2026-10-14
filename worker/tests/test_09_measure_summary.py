@@ -61,6 +61,23 @@ async def main() -> bool:
         assert_(s["gemini"]["total_tokens"] == 0, f"{s['gemini']}")
     results.append(t["passed"])
 
+    with test_case("attempt records are printed readably, including fixes and failures") as t:
+        from measure_run import format_attempts
+
+        text = format_attempts([
+            {"attempt": 1, "plan": {"shape": "montage", "total": 31.0, "reason": "R", "beats": ["hook S2-S2 5s Hook"]},
+             "verdict": {"verdict": "revise", "hook_ok": False, "meaning_preserved": True, "abrupt_cuts": [2],
+                         "main_point_stated": "unclear", "fixes": ["Open with a stronger hook."], "notes": ["n1"]}},
+            {"attempt": 2, "feedback_given": ["Open with a stronger hook."], "planner_problems": ["bad"]},
+            {"attempt": "fallback", "verifier_unavailable": True},
+        ])
+        for needle in ("Attempt 1: verdict revise", "hook S2-S2 5s Hook", "fix: Open with a stronger hook.",
+                       "abrupt_cuts=[2]", "told the planner: Open with a stronger hook.", "planner_problems: ['bad']",
+                       "Attempt fallback", "verifier unavailable", "note: n1"):
+            assert_(needle in text, f"missing {needle!r} in:\n{text}")
+        assert_(format_attempts([]) == "", "empty")
+    results.append(t["passed"])
+
     return all(results)
 
 
