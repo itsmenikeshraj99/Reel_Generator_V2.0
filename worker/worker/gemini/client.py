@@ -35,7 +35,9 @@ class GeminiResponseInvalid(Exception):
 
 # ── Transient-error retry ──────────────────────────────────────────
 
-_TRANSIENT_CODES = {429, 500, 502, 503, 504}
+# 429 (quota / rate limit) is deliberately NOT here: it does not clear in seconds,
+# so waiting on the same model only wastes time; the next model has its own quota.
+_TRANSIENT_CODES = {500, 502, 503, 504}
 _TRANSIENT_NAMES = {
     "ServerError", "ReadTimeout", "ConnectTimeout", "ConnectError",
     "RemoteProtocolError", "TimeoutException", "ReadError",
@@ -49,7 +51,7 @@ _sleep_async = asyncio.sleep
 
 
 def is_transient(exc: BaseException) -> bool:
-    """True for errors that usually clear in seconds (overload, 5xx, timeouts)."""
+    """True for errors that usually clear in seconds (overload, 5xx, timeouts); False for quota (429)."""
     code = getattr(exc, "code", None)
     if isinstance(code, int):
         return code in _TRANSIENT_CODES

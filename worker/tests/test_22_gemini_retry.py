@@ -45,11 +45,12 @@ async def main() -> bool:
     base = dict(SUPABASE_URL="u", SUPABASE_KEY="k", GEMINI_API_KEY="g")
 
     with test_case("which errors count as temporary") as t:
-        for exc in (server_error(503), server_error(500, "INTERNAL"), client_error(429, "RESOURCE_EXHAUSTED"),
+        for exc in (server_error(503), server_error(500, "INTERNAL"),
                     Exception("503 UNAVAILABLE: model is overloaded"), httpx.ReadTimeout("slow"),
                     httpx.ConnectError("down"), Exception("Deadline exceeded")):
             assert_(c.is_transient(exc), f"should be temporary: {type(exc).__name__} {exc}")
         for exc in (client_error(400), client_error(403, "PERMISSION_DENIED"), client_error(404, "NOT_FOUND"),
+                    client_error(429, "RESOURCE_EXHAUSTED"),  # quota: skip to the next model, do not wait
                     ValueError("bad value"), json.JSONDecodeError("x", "y", 0), KeyError("k")):
             assert_(not c.is_transient(exc), f"should NOT be temporary: {type(exc).__name__} {exc}")
     results.append(t["passed"])
@@ -150,7 +151,13 @@ async def main() -> bool:
         assert_(seen == [chain[0]] * 3 + [chain[1]], f"models used: {seen}")
     results.append(t["passed"])
 
-    with test_case("a model that does not exist (404) is skipped at once, without waiting") as t:
+    with test_case("a model that does not exist (404) or is out of quota (429) is skipped at once, without waiting") as t:
+        waits.clear()
+        seen = []
+        fake = models_fake(lambda n, m: client_error(429, "RESOURCE_EXHAUSTED") if m == chain[0] else json.dumps({"a": 3}), seen)
+        with patch.object(c, "_sleep", fake_sleep), patch.object(c.gemini_client.client.models, "generate_content", fake):
+            c.gemini_client.generate_content(contents=[], prompt="p", response_schema={"type": "object"})
+        assert_(seen == [chain[0], chain[1]] and waits == [], f"quota: {seen} {waits}")
         waits.clear()
         seen = []
         fake = models_fake(lambda n, m: client_error(404, "NOT_FOUND") if m == chain[0] else json.dumps({"a": 3}), seen)
