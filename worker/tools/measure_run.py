@@ -9,6 +9,7 @@ created.
 Usage (from the worker/ folder):
     ./venv/Scripts/python.exe tools/measure_run.py path/to/clip.mp4
     ./venv/Scripts/python.exe tools/measure_run.py clip.mp4 --json result.json
+    ./venv/Scripts/python.exe tools/measure_run.py clip.mp4 --save-reel some/folder
 
 The clip must be under 50 MB (Supabase Free per-file cap). It prints
 tokens, not dollars: multiply by the current price of the models used.
@@ -113,7 +114,7 @@ def _usage(response: Any) -> Dict[str, int]:
     }
 
 
-async def _measure(clip_path: str) -> Tuple[Dict[str, Any], str]:
+async def _measure(clip_path: str, save_reel_dir: Optional[str] = None) -> Tuple[Dict[str, Any], str]:
     from worker.gemini.client import gemini_client
     from worker.pipeline import Pipeline
     from worker.services.storage import worker_storage
@@ -207,13 +208,38 @@ async def _measure(clip_path: str) -> Tuple[Dict[str, Any], str]:
         outcome = f"{row.get('status')} at {row.get('current_stage')}"
         if row.get("last_error"):
             outcome += f" ({row['last_error'][:200]})"
-        return summarize(stage_marks, end_ts, gemini_calls, upload["seconds"]), outcome
+        summary = summarize(stage_marks, end_ts, gemini_calls, upload["seconds"])
+        summary["result"] = _collect_result(video_id, save_reel_dir, clip_path)
+        return summary, outcome
     finally:
         models.generate_content = original_generate
         gemini_client.upload_video = original_upload
         Pipeline.transition = original_transition
         _cleanup(video_id, user_id, storage_path, upload["name"])
         print(f"(total wall time incl. setup/cleanup: {time.time() - t_start:.1f} s)")
+
+
+def _collect_result(video_id: str, save_reel_dir: Optional[str], clip_path: str) -> Dict[str, Any]:
+    """What the pipeline produced: reel metadata, the saved plan, optionally the reel file."""
+    from worker.services.storage import worker_storage
+    from worker.services.supabase import supabase_client
+
+    info: Dict[str, Any] = {}
+    reel = supabase_client.table("reels").select("meta, storage_path").eq("video_id", video_id).limit(1).execute()
+    if reel.data:
+        info["reel_meta"] = reel.data[0].get("meta")
+        if save_reel_dir:
+            os.makedirs(save_reel_dir, exist_ok=True)
+            name = os.path.splitext(os.path.basename(clip_path))[0].replace(" ", "_") + "_reel.mp4"
+            dest = os.path.join(save_reel_dir, name)
+            with open(dest, "wb") as f:
+                f.write(worker_storage.download_file(reel.data[0]["storage_path"]))
+            info["reel_file"] = dest
+    plan = supabase_client.table("edit_plans").select("plan, shape, verifier, segments").eq(
+        "video_id", video_id).eq("status", "accepted").limit(1).execute()
+    if plan.data:
+        info["plan"] = plan.data[0]
+    return info
 
 
 def _cleanup(
@@ -255,6 +281,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Measure one clip through the pipeline.")
     parser.add_argument("clip", help="path to a video under 50 MB")
     parser.add_argument("--json", dest="json_path", help="also write the summary to this file")
+    parser.add_argument("--save-reel", dest="save_reel", help="folder to save the finished reel into")
     args = parser.parse_args()
 
     if not os.path.isfile(args.clip):
@@ -269,8 +296,19 @@ def main() -> int:
     if _WORKER_ROOT not in sys.path:
         sys.path.insert(0, _WORKER_ROOT)
 
-    summary, outcome = asyncio.run(_measure(os.path.abspath(args.clip)))
+    summary, outcome = asyncio.run(_measure(os.path.abspath(args.clip), args.save_reel))
     print(format_summary(summary, outcome))
+    result = summary.get("result") or {}
+    if result.get("reel_file"):
+        print(f"\nReel saved to: {result['reel_file']}")
+    if result.get("reel_meta"):
+        print("\nreels.meta:", json.dumps(result["reel_meta"], ensure_ascii=False, indent=2))
+    plan = (result.get("plan") or {}).get("plan")
+    if plan:
+        print(f"\nPlan: {plan['shape']} - {plan.get('reason')}")
+        for b in plan["beats"]:
+            print(f"  {b['role']:<8} {b['from_id']}-{b['to_id']} {b['start']:.1f}-{b['end']:.1f}s [{b['label']}] {b.get('why', '')}")
+        print("Verifier:", json.dumps((result["plan"] or {}).get("verifier"), ensure_ascii=False))
     if args.json_path:
         with open(args.json_path, "w", encoding="utf-8") as f:
             json.dump({"outcome": outcome, **summary}, f, indent=2)
