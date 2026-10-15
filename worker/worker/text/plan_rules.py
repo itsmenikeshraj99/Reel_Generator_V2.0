@@ -17,6 +17,8 @@ Plan shape (the planner's output):
 Beats refer to sentence ids from the sentence index, never to seconds.
 """
 import copy
+import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -34,6 +36,7 @@ TARGET_MAX_S = 45.0
 MIN_BEATS = 3   # montage: hook + at least 2 more
 MAX_BEATS = 8   # montage: hook + up to 6 + optional close
 LABEL_MAX = 24
+TITLE_MAX = 50
 
 
 @dataclass
@@ -44,6 +47,45 @@ class RuleResult:
     repairs: List[str] = field(default_factory=list)   # what was changed or dropped
     warnings: List[str] = field(default_factory=list)  # accepted, but not ideal
     total_seconds: float = 0.0
+
+
+def has_devanagari(text: Any) -> bool:
+    return isinstance(text, str) and any("\u0900" <= ch <= "\u097f" for ch in text)
+
+
+def dominant_script(sentences: Sequence[Any]) -> str:
+    """'dev' if most of the spoken text is Devanagari, else 'lat'."""
+    dev = other = 0
+    for s in sentences:
+        text = (s if isinstance(s, dict) else s.to_dict()).get("text", "")
+        for ch in text:
+            if ch.isalpha():
+                if "\u0900" <= ch <= "\u097f":
+                    dev += 1
+                else:
+                    other += 1
+    return "dev" if dev > 0.3 * (dev + other) and dev > 0 else "lat"
+
+
+def clean_title(value: Any, limit: int = TITLE_MAX) -> str:
+    """A safe on-screen headline: letters, marks, numbers and punctuation only (no emoji, symbols or
+    subtitle control characters), one line, at most `limit` characters, cut at a word boundary."""
+    if not isinstance(value, str):
+        return ""
+    keep = []
+    for ch in value:
+        if ch in "\u200c\u200d" or unicodedata.category(ch)[0] in "LMNPZ":  # ZWJ/ZWNJ shape Devanagari
+            keep.append(ch)
+        else:
+            keep.append(" ")
+    text = re.sub(r"[{}\\]", " ", "".join(keep))
+    text = re.sub(r"\s+", " ", text).strip().strip("\"'\u201c\u201d\u2018\u2019").strip()
+    if len(text) > limit:
+        cut = text[:limit]
+        if text[limit] != " " and " " in cut:
+            cut = cut[:cut.rfind(" ")]
+        text = cut.rstrip(" ,;:-")
+    return text
 
 
 def _as_dict(item: Any) -> Dict[str, Any]:
@@ -207,4 +249,10 @@ def validate_plan(plan: Any, sentences: Sequence[Any]) -> RuleResult:
     out = {key: copy.deepcopy(val) for key, val in plan.items() if key != "beats"}
     out["reason"] = _text(plan.get("reason"))
     out["beats"] = beats_out
+    title = clean_title(plan.get("title"))
+    if not title:
+        title = clean_title(beats_out[0]["label"])
+        if title:
+            warnings.append("no title given; the first beat's label is used")
+    out["title"] = title
     return RuleResult(True, out, [], repairs, warnings, round(seconds, 3))

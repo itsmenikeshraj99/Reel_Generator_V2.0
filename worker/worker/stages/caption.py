@@ -19,13 +19,16 @@ silent-or-without-captions video, so the user still gets a reel.
 import logging
 import os
 import subprocess
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from worker.config import settings
+from worker.edit import overlays
 from worker.edit.canvas import (
-    CaptionLayout, DEFAULT_CAPTION_LAYOUT, caption_layout, picture_box, probe_display_size,
+    CANVAS_H, CANVAS_W, Box, CaptionLayout, DEFAULT_CAPTION_LAYOUT, caption_layout, picture_box,
+    probe_display_size,
 )
 from worker.services.supabase import supabase_client
+from worker.text.plan_rules import clean_title
 
 logger = logging.getLogger("stage_caption")
 
@@ -55,11 +58,21 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 _DEFAULT_STYLE_TAIL = ",1,5,3,2,60,60,420,1"  # outline/shadow, alignment 2, margins L/R/V 60/60/420
 
 
-def _header(layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT) -> str:
-    """The ASS header with the caption position taken from `layout` (default = today's style)."""
+def _header(layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT, extra_styles: str = "") -> str:
+    """The ASS header with the caption position taken from `layout` (default = today's style).
+    `extra_styles` (full "Style: ..." lines) is added after the default style."""
     assert _ASS_HEADER.count(_DEFAULT_STYLE_TAIL) == 1
-    return _ASS_HEADER.replace(
+    header = _ASS_HEADER.replace(
         _DEFAULT_STYLE_TAIL, f",1,5,3,{layout.alignment},60,60,{layout.margin_v},1")
+    if extra_styles:
+        header = header.replace("\n\n[Events]", "\n" + extra_styles + "\n\n[Events]")
+    return header
+
+
+def _dev_caption_style(layout: CaptionLayout) -> str:
+    """The caption style again, named DefaultDev and using the Devanagari font."""
+    line = next(ln for ln in _header(layout).split("\n") if ln.startswith("Style: Default,"))
+    return line.replace("Style: Default,Inter,", f"Style: DefaultDev,{overlays.DEVANAGARI_FONT},", 1)
 
 
 def _ass_time(seconds: float) -> str:
@@ -103,6 +116,8 @@ def _build_ass(
     segments: List[Dict[str, Any]],
     words: List[Dict[str, Any]],
     layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT,
+    overlay_lines: Sequence[str] = (),
+    extra_styles: str = "",
 ) -> str:
     """Build the full ASS script. Cue time is relative to the *concatenated*
     output (not the source), so we walk segments in order and add per-segment
@@ -112,7 +127,7 @@ def _build_ass(
         # Without words we can't make per-cue captions; emit a single ASS
         # file with no events (ass filter still works, video just won't
         # display any captions).
-        return _header(layout)
+        return _header(layout, extra_styles) + ("\n".join(overlay_lines) + "\n" if overlay_lines else "")
 
     # Build a per-source-time word stream and a segment lookup.
     # Pre-sort words defensively.
@@ -122,6 +137,7 @@ def _build_ass(
     )
 
     events: List[str] = []
+    uses_dev = False
     output_t = 0.0
     for seg in segments:
         seg_start = float(seg["start_time"])
@@ -169,13 +185,38 @@ def _build_ass(
             text = " ".join(text_parts)
             if not text:
                 continue
+            style = "DefaultDev" if overlays.script_of(" ".join(str(w["text"]) for w in c)) == "dev" else "Default"
+            uses_dev = uses_dev or style == "DefaultDev"
             events.append(
-                f"Dialogue: 0,{_ass_time(cue_in)},{_ass_time(cue_out)},Default,,0,0,0,,{text}"
+                f"Dialogue: 0,{_ass_time(cue_in)},{_ass_time(cue_out)},{style},,0,0,0,,{text}"
             )
 
         output_t += seg_duration
 
-    return _header(layout) + "\n".join(events) + "\n"
+    styles = ((_dev_caption_style(layout) + "\n") if uses_dev else "") + extra_styles
+    return _header(layout, styles.strip("\n")) + "\n".join(list(events) + list(overlay_lines)) + "\n"
+
+
+def _fetch_plan(video_id: str) -> Optional[Dict[str, Any]]:
+    """The accepted smart plan (title, shape, beats), or None for plans from the classic pipeline."""
+    res = supabase_client.table("edit_plans").select("plan").eq("video_id", video_id).eq(
+        "status", "accepted").not_.is_("plan", "null").limit(1).execute()
+    return res.data[0]["plan"] if res.data else None
+
+
+async def _prepare_overlays(video_id: str, segments: List[Dict[str, Any]], source_path: Optional[str]):
+    """(dialogue lines, extra styles, info for reels.meta) for the hook title and point labels."""
+    plan = _fetch_plan(video_id)
+    if not plan:
+        return [], "", {"skipped": "no smart plan"}
+    size = probe_display_size(source_path) if (source_path and settings.REFRAME_MODE == "fit") else None
+    box = picture_box(*size) if size else Box(0, 0, CANVAS_W, CANVAS_H)
+    layout = overlays.overlay_layout(box)
+    items = overlays.plan_items(clean_title(plan.get("title")), plan.get("shape", ""), segments)
+    fitted = await overlays.fit_items(items)
+    info = {"title": any(i.kind == "title" for i in fitted),
+            "labels": sum(1 for i in fitted if i.kind == "label"), "boxed": layout.boxed}
+    return overlays.ass_lines(fitted), overlays.style_lines(layout), info
 
 
 def _layout_for(source_path: Optional[str]) -> CaptionLayout:
@@ -203,7 +244,17 @@ async def burn_captions(
             logger.warning("No accepted segments for %s; skipping captions", video_id)
             return False
 
-        ass_text = _build_ass(segments, words, _layout_for(source_path))
+        overlay_lines: List[str] = []
+        extra_styles = ""
+        if settings.TEXT_OVERLAYS_ENABLED:
+            try:
+                overlay_lines, extra_styles, info = await _prepare_overlays(video_id, segments, source_path)
+            except Exception as exc:  # noqa: BLE001 - captions alone are better than no reel
+                logger.exception("Text overlays failed for %s (%s); captions only", video_id, exc)
+                overlay_lines, extra_styles, info = [], "", {"error": str(exc)[:200]}
+            if pipeline is not None and hasattr(pipeline, "reel_meta_extra"):
+                pipeline.reel_meta_extra["overlays"] = info
+        ass_text = _build_ass(segments, words, _layout_for(source_path), overlay_lines, extra_styles)
         if "Dialogue:" not in ass_text:
             logger.warning("No words overlap segments for %s; skipping captions", video_id)
             return False
@@ -222,12 +273,15 @@ async def burn_captions(
         # file web-playable, and `+faststart` for streaming.
         # Memory: single-thread + ultrafast keeps caption stage under
         # ~700MB so we don't OOM on Railway's 2GB worker after reframe.
+        fonts_opt = ""
+        if overlay_lines or "DefaultDev" in ass_text:  # bundled fonts only when text needs them
+            fonts_opt = ":fontsdir='" + overlays.FONTS_DIR.replace("\\", "/").replace(":", "\\:") + "'"
         cmd = [
             "ffmpeg", "-y",
             "-threads", "1",
             "-filter_threads", "1",
             "-i", video_path,
-            "-vf", f"ass='{safe_ass}'",
+            "-vf", f"ass='{safe_ass}'{fonts_opt}",
             "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
             "-c:a", "copy",  # never re-encode audio here
             "-movflags", "+faststart",

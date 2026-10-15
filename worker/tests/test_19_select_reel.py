@@ -224,6 +224,12 @@ async def main() -> bool:
         assert_(res.ok and abs(res.total_seconds - 38.0) < 3.0, f"{res.errors} {res.total_seconds}")
     results.append(t["passed"])
 
+    with test_case("best_single_stretch: the plan carries the key point's title (empty for a hook-only stretch)") as t:
+        assert_(best_single_stretch(outline(), SENTS, 38.0)["title"] == "Big idea", "key point title")
+        hook_only = outline(key_points=[], hook_candidates=[{"sentence_id": "S5", "type": "other", "reason": ""}])
+        assert_(best_single_stretch(hook_only, SENTS, 38.0)["title"] == "", "no generic English placeholder")
+    results.append(t["passed"])
+
     with test_case("best_single_stretch: trims a long point towards the target") as t:
         big = best_single_stretch(outline(key_points=[{"title": "Huge", "from_id": "S1", "to_id": "S30"}]), SENTS, 38.0)
         res = pr.validate_plan(big, SENTS)

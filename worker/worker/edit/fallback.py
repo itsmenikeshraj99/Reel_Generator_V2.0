@@ -87,10 +87,12 @@ def best_single_stretch(
     _, title, (i0, i1) = best
     plan = {
         "shape": "single_stretch",
+        "title": "" if title == "Best stretch" else title,
         "reason": f"Fallback: the most self-contained stretch of the video ({title}).",
         "beats": [{
             "from_id": sents[i0]["id"], "to_id": sents[i1]["id"],
-            "label": title[:pr.LABEL_MAX], "join": "continuous", "why": "best single stretch",
+            "label": "" if title == "Best stretch" else title[:pr.LABEL_MAX],
+            "join": "continuous", "why": "best single stretch",
         }],
     }
     checked = pr.validate_plan(plan, sents)

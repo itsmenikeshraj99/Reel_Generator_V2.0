@@ -59,11 +59,39 @@ async def main() -> bool:
         assert_("NOT ACCEPTED" not in p, "feedback block must be absent without feedback")
         assert_("NOT ACCEPTED" in ps.build_prompt(outline, SENTS, 38, ["be shorter"]) and "be shorter" in
                 ps.build_prompt(outline, SENTS, 38, ["be shorter"]), "feedback missing")
-        assert_("plan-story-v2" in ps.__doc__, "prompt version")
+        assert_("plan-story-v3" in ps.__doc__, "prompt version")
+        for needle in ("title: a short headline", "at most 50 characters", "devanagari for hindi"):
+            assert_(needle in p.lower(), f"title guidance missing: {needle!r}")
         low = p.lower()
         for needle in ("never start on a filler", "hard cuts", "conversation", "stands on its own"):
             assert_(needle in low, f"v2 guidance missing: {needle!r}")
         assert_("MUST be \"single_stretch\"" not in p, "the one-stretch block must only appear on request")
+    results.append(t["passed"])
+
+    with test_case("Hindi transcript: a title or label in Latin letters is sent back once; Devanagari or English are accepted at once") as t:
+        hi_text = "\u092b\u094b\u0928 \u0906\u092a\u0915\u094b \u0915\u0948\u0938\u0947 \u0915\u092e\u091c\u093c\u094b\u0930 \u092c\u0928\u093e\u0924\u093e \u0939\u0948"
+        hi_sents = [dict(s, text=hi_text) for s in SENTS]
+        hi_title, hi_label = "\u092b\u094b\u0928 \u0915\u093e \u0905\u0938\u0930", "\u0905\u0927\u094d\u092f\u092f\u0928"
+        latin = dict(GOOD_PLAN, title="Phone ka asar")
+        deva = dict(GOOD_PLAN, title=hi_title, beats=[dict(b, label=hi_label) for b in GOOD_PLAN["beats"]])
+        fake = Fake(latin, deva)
+        r = await ps.plan_story(outline, hi_sents, target_seconds=38, call=fake)
+        assert_(r.ok and r.attempts == 2 and r.plan["title"] == hi_title, f"{r.problems}")
+        assert_("Devanagari" in fake.prompts[1] and "Phone ka asar" in fake.prompts[1], "the offending text must be fed back")
+        # a Devanagari title with a Latin label is also sent back
+        mixed = dict(deva, beats=[dict(b, label="Study") for b in deva["beats"]])
+        r = await ps.plan_story(outline, hi_sents, target_seconds=38, call=Fake(mixed, deva))
+        assert_(r.ok and r.attempts == 2 and r.plan["beats"][0]["label"] == hi_label, f"{r.problems}")
+        # still Latin on the last attempt: accepted, with the problem noted
+        r = await ps.plan_story(outline, hi_sents, target_seconds=38, call=Fake(latin, latin))
+        assert_(r.ok and r.attempts == 2 and any("Devanagari" in p for p in r.problems), f"{r.problems}")
+        # already right, or an English / romanised transcript: no second call
+        assert_((await ps.plan_story(outline, hi_sents, target_seconds=38, call=Fake(deva))).attempts == 1, "Devanagari accepted")
+        assert_((await ps.plan_story(outline, SENTS, target_seconds=38, call=Fake(latin))).attempts == 1, "English transcript")
+        romanised = [dict(s, text="Yeh phone aapko kamzor banata hai") for s in SENTS]
+        assert_((await ps.plan_story(outline, romanised, target_seconds=38, call=Fake(latin))).attempts == 1, "Hinglish transcript")
+        mixed_title = dict(GOOD_PLAN, title="Phone \u0915\u093e \u0905\u0938\u0930", beats=[dict(b, label="\u0905\u0927\u094d\u092f\u092f\u0928 Study") for b in GOOD_PLAN["beats"]])
+        assert_((await ps.plan_story(outline, hi_sents, target_seconds=38, call=Fake(mixed_title))).attempts == 1, "a title with some Devanagari is fine")
     results.append(t["passed"])
 
     with test_case("force_shape asks for exactly one stretch and rejects a montage answer") as t:
@@ -87,6 +115,7 @@ async def main() -> bool:
         assert_(sch["properties"]["shape"]["enum"] == list(pr.SHAPES), "shape enum")
         assert_(sch["properties"]["beats"]["items"]["properties"]["join"]["enum"] == list(pr.JOINS), "join enum")
         assert_(set(sch["required"]) == {"shape", "reason", "beats"}, "required")
+        assert_(sch["properties"]["title"] == {"type": "string"}, "the schema must offer a title")
     results.append(t["passed"])
 
     with test_case("a good first answer is accepted after one call") as t:

@@ -33,7 +33,8 @@ def montage(*beats, **kw):
 
 
 # 5 + 10.5 + 10.5 + 5 = 31 s, ascending source order
-GOOD = montage(beat("S2", "S2", "Hook"), beat("S4", "S5"), beat("S20", "S21"), beat("S30", "S30"))
+GOOD = montage(beat("S2", "S2", "Hook"), beat("S4", "S5"), beat("S20", "S21"), beat("S30", "S30"),
+               title="Why Phones Drain Your Focus")
 
 
 def check_invariants(res, sents):
@@ -44,6 +45,7 @@ def check_invariants(res, sents):
     ids = {s["id"]: s for s in sents}
     beats = plan["beats"]
     assert_(plan["shape"] in pr.SHAPES and plan["reason"].strip(), "shape/reason")
+    assert_(isinstance(plan["title"], str) and len(plan["title"]) <= 50 and "{" not in plan["title"], "title")
     seen = set()
     total = 0.0
     for b in beats:
@@ -87,6 +89,46 @@ async def main() -> bool:
         assert_(abs(r.total_seconds - 31.0) < 1e-6 and not r.warnings, f"{r.total_seconds} {r.warnings}")
         assert_(GOOD == before, "input was modified")
         check_invariants(r, SENTS)
+    results.append(t["passed"])
+
+    with test_case("the title is cleaned (emoji, braces, quotes, line breaks) and carried on the plan") as t:
+        r = validate_plan(dict(GOOD, title='  "Phones \U0001F4F1 {make}\nyou \\ dumber!"  '), SENTS)
+        assert_(r.ok and r.plan["title"] == "Phones make you dumber!", repr(r.plan["title"]))
+        assert_(validate_plan(GOOD, SENTS).plan["title"] == "Why Phones Drain Your Focus", "kept as given")
+    results.append(t["passed"])
+
+    with test_case("Devanagari titles keep their vowel signs and joiners") as t:
+        hindi = "\u092b\u094b\u0928 \u0906\u092a\u0915\u094b \u0915\u0948\u0938\u0947 \u0915\u092e\u091c\u093c\u094b\u0930 \u092c\u0928\u093e\u0924\u093e \u0939\u0948"
+        assert_(pr.clean_title(hindi) == hindi, repr(pr.clean_title(hindi)))
+        assert_(pr.clean_title("\u0915\u094d\u200d\u0937") == "\u0915\u094d\u200d\u0937", "ZWJ must survive")
+    results.append(t["passed"])
+
+    with test_case("long titles are cut at a word boundary within 50 characters; junk gives an empty title") as t:
+        long = "Why a dead phone on your desk still lowers your focus and your IQ"
+        cut = pr.clean_title(long)
+        assert_(len(cut) <= 50 and long.startswith(cut) and cut.endswith("your"), repr(cut))  # "...your focus" would be 53
+        assert_(pr.clean_title("x" * 80) == "x" * 50, "no spaces: hard cut")
+        for junk in (None, 5, [], "", "   ", "\U0001F4F1\U0001F4F1", "{}\\"):
+            assert_(pr.clean_title(junk) == "", f"{junk!r}")
+    results.append(t["passed"])
+
+    with test_case("script detection: Devanagari transcripts are told apart from English and romanised Hindi") as t:
+        hi = [{"text": "\u092b\u094b\u0928 \u0906\u092a\u0915\u094b \u0915\u0948\u0938\u0947 \u0915\u092e\u091c\u093c\u094b\u0930 \u092c\u0928\u093e\u0924\u093e \u0939\u0948"}]
+        assert_(pr.dominant_script(hi) == "dev", "Hindi in Devanagari")
+        assert_(pr.dominant_script([{"text": "Phones make you dumber"}]) == "lat", "English")
+        assert_(pr.dominant_script([{"text": "Yeh phone aapko kamzor banata hai"}]) == "lat", "romanised Hindi (Hinglish)")
+        assert_(pr.dominant_script(hi + [{"text": "Phones make you dumber again and again"}] * 4) == "lat", "mostly English with a little Hindi")
+        assert_(pr.dominant_script([]) == "lat" and pr.dominant_script([{"text": "123 ... !!!"}]) == "lat", "empty / no letters")
+        assert_(pr.has_devanagari("Phone \u092b\u094b\u0928") and not pr.has_devanagari("Phone") and not pr.has_devanagari(None), "has_devanagari")
+    results.append(t["passed"])
+
+    with test_case("a missing title falls back to the first beat's label, with a warning") as t:
+        plan = dict(GOOD)
+        plan.pop("title")
+        r = validate_plan(plan, SENTS)
+        assert_(r.plan["title"] == "Hook" and any("no title" in w for w in r.warnings), f"{r.plan['title']} {r.warnings}")
+        blank = dict(plan, beats=[dict(b, label="") for b in plan["beats"]])
+        assert_(validate_plan(blank, SENTS).plan["title"] == "", "no title and no label")
     results.append(t["passed"])
 
     with test_case("a good single stretch passes") as t:
