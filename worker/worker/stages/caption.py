@@ -19,8 +19,12 @@ silent-or-without-captions video, so the user still gets a reel.
 import logging
 import os
 import subprocess
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from worker.config import settings
+from worker.edit.canvas import (
+    CaptionLayout, DEFAULT_CAPTION_LAYOUT, caption_layout, picture_box, probe_display_size,
+)
 from worker.services.supabase import supabase_client
 
 logger = logging.getLogger("stage_caption")
@@ -46,6 +50,16 @@ Style: Default,Inter,72,&H00FFFFFF,&H00FFFF,&H00000000,&H80000000,-1,0,0,0,100,1
 [Events]
 Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
 """
+
+
+_DEFAULT_STYLE_TAIL = ",1,5,3,2,60,60,420,1"  # outline/shadow, alignment 2, margins L/R/V 60/60/420
+
+
+def _header(layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT) -> str:
+    """The ASS header with the caption position taken from `layout` (default = today's style)."""
+    assert _ASS_HEADER.count(_DEFAULT_STYLE_TAIL) == 1
+    return _ASS_HEADER.replace(
+        _DEFAULT_STYLE_TAIL, f",1,5,3,{layout.alignment},60,60,{layout.margin_v},1")
 
 
 def _ass_time(seconds: float) -> str:
@@ -88,6 +102,7 @@ def _fetch_video_data(video_id: str) -> Tuple[List[Dict[str, Any]], List[Dict[st
 def _build_ass(
     segments: List[Dict[str, Any]],
     words: List[Dict[str, Any]],
+    layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT,
 ) -> str:
     """Build the full ASS script. Cue time is relative to the *concatenated*
     output (not the source), so we walk segments in order and add per-segment
@@ -97,7 +112,7 @@ def _build_ass(
         # Without words we can't make per-cue captions; emit a single ASS
         # file with no events (ass filter still works, video just won't
         # display any captions).
-        return _ASS_HEADER
+        return _header(layout)
 
     # Build a per-source-time word stream and a segment lookup.
     # Pre-sort words defensively.
@@ -160,10 +175,22 @@ def _build_ass(
 
         output_t += seg_duration
 
-    return _ASS_HEADER + "\n".join(events) + "\n"
+    return _header(layout) + "\n".join(events) + "\n"
 
 
-async def burn_captions(pipeline, video_id: str, video_path: str, output_path: str) -> bool:
+def _layout_for(source_path: Optional[str]) -> CaptionLayout:
+    """Caption position for the fit layout; today's default whenever it cannot be worked out."""
+    if settings.REFRAME_MODE != "fit" or not source_path:
+        return DEFAULT_CAPTION_LAYOUT
+    size = probe_display_size(source_path)
+    if size is None:
+        return DEFAULT_CAPTION_LAYOUT
+    return caption_layout(picture_box(*size))
+
+
+async def burn_captions(
+    pipeline, video_id: str, video_path: str, output_path: str, source_path: Optional[str] = None,
+) -> bool:
     """Burn ASS captions into the reel. Returns True on success.
 
     On failure, returns False but logs — the upstream video is still
@@ -176,7 +203,7 @@ async def burn_captions(pipeline, video_id: str, video_path: str, output_path: s
             logger.warning("No accepted segments for %s; skipping captions", video_id)
             return False
 
-        ass_text = _build_ass(segments, words)
+        ass_text = _build_ass(segments, words, _layout_for(source_path))
         if "Dialogue:" not in ass_text:
             logger.warning("No words overlap segments for %s; skipping captions", video_id)
             return False
