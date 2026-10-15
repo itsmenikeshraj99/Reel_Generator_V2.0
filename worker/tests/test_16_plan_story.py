@@ -59,7 +59,9 @@ async def main() -> bool:
         assert_("NOT ACCEPTED" not in p, "feedback block must be absent without feedback")
         assert_("NOT ACCEPTED" in ps.build_prompt(outline, SENTS, 38, ["be shorter"]) and "be shorter" in
                 ps.build_prompt(outline, SENTS, 38, ["be shorter"]), "feedback missing")
-        assert_("plan-story-v2" in ps.__doc__, "prompt version")
+        assert_("plan-story-v3" in ps.__doc__, "prompt version")
+        for needle in ("title: a short headline", "at most 50 characters", "devanagari for hindi"):
+            assert_(needle in p.lower(), f"title guidance missing: {needle!r}")
         low = p.lower()
         for needle in ("never start on a filler", "hard cuts", "conversation", "stands on its own"):
             assert_(needle in low, f"v2 guidance missing: {needle!r}")
@@ -87,6 +89,7 @@ async def main() -> bool:
         assert_(sch["properties"]["shape"]["enum"] == list(pr.SHAPES), "shape enum")
         assert_(sch["properties"]["beats"]["items"]["properties"]["join"]["enum"] == list(pr.JOINS), "join enum")
         assert_(set(sch["required"]) == {"shape", "reason", "beats"}, "required")
+        assert_(sch["properties"]["title"] == {"type": "string"}, "the schema must offer a title")
     results.append(t["passed"])
 
     with test_case("a good first answer is accepted after one call") as t:

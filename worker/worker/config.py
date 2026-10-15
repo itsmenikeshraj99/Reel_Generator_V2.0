@@ -53,6 +53,9 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # Hook title and point labels drawn on the reel (smart pipeline plans only).
+    TEXT_OVERLAYS_ENABLED: bool = False
+
     # How many times to retry the SAME Gemini model on a temporary error
     # (overload, 5xx, timeout) before falling to the next model (0-5).
     GEMINI_TRANSIENT_RETRIES: int = 2

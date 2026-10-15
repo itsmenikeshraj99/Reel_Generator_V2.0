@@ -1,6 +1,6 @@
 """Smart pipeline, call 2: plan the story of the reel.
 
-Prompt version: plan-story-v2
+Prompt version: plan-story-v3
 
 A text-only Gemini call turns the outline and the numbered sentence index
 into a plan: one strong stretch or a montage of beats, each a range of
@@ -29,6 +29,7 @@ PLAN_SCHEMA_DICT: dict = {
         "reason": {"type": "string"},
         "reorder_reason": {"type": "string"},
         "mood": {"type": "string"},
+        "title": {"type": "string"},
         "beats": {
             "type": "array",
             "items": {
@@ -91,6 +92,10 @@ Rules:
 - The video may be a conversation between people. Prefer passages where one speaker finishes a complete point.
 - reason: ONE sentence explaining why the reel makes sense as a whole.
 - mood: one word for the music (for example calm, upbeat, serious, inspiring).
+- title: a short headline for the reel, at most 50 characters, that makes a viewer want to keep watching.
+  No emoji and no quotation marks.
+- Write the title and every label in the language of the video (see the outline), in the script the speaker
+  uses: Devanagari for Hindi, Latin letters for English or Hinglish.
 Output strictly the requested JSON."""
 
 
