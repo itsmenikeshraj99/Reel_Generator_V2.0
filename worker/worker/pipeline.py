@@ -531,7 +531,7 @@ class Pipeline:
                 tempfile.gettempdir(), f"reel_{self.video_id}_captioned.mp4"
             )
             # Pass self to enable heartbeats
-            if await burn_captions(self, self.video_id, output_path, captioned_path):
+            if await burn_captions(self, self.video_id, output_path, captioned_path, source_path=video_path):
                 final_path = captioned_path
 
             # --- Adaptive Size Control ---
