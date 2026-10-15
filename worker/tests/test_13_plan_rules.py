@@ -112,6 +112,16 @@ async def main() -> bool:
             assert_(pr.clean_title(junk) == "", f"{junk!r}")
     results.append(t["passed"])
 
+    with test_case("script detection: Devanagari transcripts are told apart from English and romanised Hindi") as t:
+        hi = [{"text": "\u092b\u094b\u0928 \u0906\u092a\u0915\u094b \u0915\u0948\u0938\u0947 \u0915\u092e\u091c\u093c\u094b\u0930 \u092c\u0928\u093e\u0924\u093e \u0939\u0948"}]
+        assert_(pr.dominant_script(hi) == "dev", "Hindi in Devanagari")
+        assert_(pr.dominant_script([{"text": "Phones make you dumber"}]) == "lat", "English")
+        assert_(pr.dominant_script([{"text": "Yeh phone aapko kamzor banata hai"}]) == "lat", "romanised Hindi (Hinglish)")
+        assert_(pr.dominant_script(hi + [{"text": "Phones make you dumber again and again"}] * 4) == "lat", "mostly English with a little Hindi")
+        assert_(pr.dominant_script([]) == "lat" and pr.dominant_script([{"text": "123 ... !!!"}]) == "lat", "empty / no letters")
+        assert_(pr.has_devanagari("Phone \u092b\u094b\u0928") and not pr.has_devanagari("Phone") and not pr.has_devanagari(None), "has_devanagari")
+    results.append(t["passed"])
+
     with test_case("a missing title falls back to the first beat's label, with a warning") as t:
         plan = dict(GOOD)
         plan.pop("title")

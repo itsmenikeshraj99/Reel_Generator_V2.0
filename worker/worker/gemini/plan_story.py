@@ -174,6 +174,16 @@ async def plan_story(
             notes = list(feedback or []) + [wrong]
             logger.warning("Plan attempt %d rejected: %s", attempt, wrong)
             continue
+        if checked.ok and attempt < max_attempts and pr.dominant_script(sentences) == "dev":
+            wrong = [t for t in [checked.plan.get("title", "")] + [b.get("label", "") for b in checked.plan["beats"]]
+                     if t and not pr.has_devanagari(t)]
+            if wrong:
+                note = ("The speaker's language is Hindi and the transcript is in Devanagari: write the title and every "
+                        "label in Devanagari script, not Latin letters. Not in Devanagari: " + "; ".join(wrong))
+                result.problems.append(note)
+                notes = list(feedback or []) + [note]
+                logger.warning("Plan attempt %d rejected: %s", attempt, note)
+                continue
         if checked.ok:
             result.ok, result.plan = True, checked.plan
             return result

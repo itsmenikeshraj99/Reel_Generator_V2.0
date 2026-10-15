@@ -49,6 +49,24 @@ class RuleResult:
     total_seconds: float = 0.0
 
 
+def has_devanagari(text: Any) -> bool:
+    return isinstance(text, str) and any("\u0900" <= ch <= "\u097f" for ch in text)
+
+
+def dominant_script(sentences: Sequence[Any]) -> str:
+    """'dev' if most of the spoken text is Devanagari, else 'lat'."""
+    dev = other = 0
+    for s in sentences:
+        text = (s if isinstance(s, dict) else s.to_dict()).get("text", "")
+        for ch in text:
+            if ch.isalpha():
+                if "\u0900" <= ch <= "\u097f":
+                    dev += 1
+                else:
+                    other += 1
+    return "dev" if dev > 0.3 * (dev + other) and dev > 0 else "lat"
+
+
 def clean_title(value: Any, limit: int = TITLE_MAX) -> str:
     """A safe on-screen headline: letters, marks, numbers and punctuation only (no emoji, symbols or
     subtitle control characters), one line, at most `limit` characters, cut at a word boundary."""
