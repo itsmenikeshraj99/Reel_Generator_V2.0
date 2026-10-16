@@ -1,6 +1,6 @@
 """Smart pipeline, call 2: plan the story of the reel.
 
-Prompt version: plan-story-v3
+Prompt version: plan-story-v4
 
 A text-only Gemini call turns the outline and the numbered sentence index
 into a plan: one strong stretch or a montage of beats, each a range of
@@ -91,7 +91,10 @@ Rules:
   beat should follow logically from the one before, and no beat may refer to something the viewer was not told.
 - The video may be a conversation between people. Prefer passages where one speaker finishes a complete point.
 - reason: ONE sentence explaining why the reel makes sense as a whole.
-- mood: one word for the music (for example calm, upbeat, serious, inspiring).
+- mood: one word for the background music, chosen from what the reel says and how it feels: calm (explaining,
+  reflective), upbeat (fun, energetic, light), serious (heavy, urgent, dramatic) or inspiring (motivating,
+  triumphant). Use none when music would get in the way (a sensitive personal story, grief, a legal or medical
+  warning, or a very quiet intimate talk).
 - title: a short headline for the reel, at most 50 characters, that makes a viewer want to keep watching.
   No emoji and no quotation marks.
 - Write the title and every label in the language of the video (see the outline), in the script the speaker

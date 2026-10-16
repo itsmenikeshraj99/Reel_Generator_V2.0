@@ -60,6 +60,15 @@ class WorkerSettings(BaseSettings):
     # Hook title and point labels drawn on the reel (smart pipeline plans only).
     TEXT_OVERLAYS_ENABLED: bool = False
 
+    # Background music (smart pipeline reels). Whether a reel gets music is the user's "add music" choice
+    # at upload; this is only the kill switch (on by default).
+    MUSIC_ENABLED: bool = True
+    # Empty = the bundled worker/assets/music folder. Tests and trials point this somewhere else.
+    MUSIC_DIR: str = ""
+    # Loudness of the finished reel, and how far the music sits below the speech between words (dB).
+    LOUDNESS_TARGET_LUFS: float = -14.0
+    MUSIC_BELOW_SPEECH_DB: float = 20.0
+
     # How many times to retry the SAME Gemini model on a temporary error
     # (overload, 5xx, timeout) before falling to the next model (0-5).
     GEMINI_TRANSIENT_RETRIES: int = 2
@@ -127,6 +136,20 @@ class WorkerSettings(BaseSettings):
         v = v.strip().lower()
         if v not in ("fit", "crop"):
             raise ValueError(f"REFRAME_MODE={v!r} must be 'fit' or 'crop'")
+        return v
+
+    @field_validator("LOUDNESS_TARGET_LUFS")
+    @classmethod
+    def _validate_loudness(cls, v: float) -> float:
+        if not -24.0 <= v <= -9.0:
+            raise ValueError(f"LOUDNESS_TARGET_LUFS={v} must be between -24 and -9")
+        return v
+
+    @field_validator("MUSIC_BELOW_SPEECH_DB")
+    @classmethod
+    def _validate_music_below(cls, v: float) -> float:
+        if not 10.0 <= v <= 35.0:
+            raise ValueError(f"MUSIC_BELOW_SPEECH_DB={v} must be between 10 and 35")
         return v
 
     @field_validator("REEL_TARGET_SECONDS")

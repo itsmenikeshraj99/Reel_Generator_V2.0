@@ -69,6 +69,7 @@ TESTS: List[Tuple[str, str]] = [
     ("test_25_text_overlays", "Test 25: Hook title and point labels"),
     ("test_26_transitions", "Test 26: Smooth transitions"),
     ("test_27_draft_crossfades", "Test 27: Draft with crossfades"),
+    ("test_28_music_library", "Test 28: Music library"),
 ]
 
 
