@@ -73,6 +73,8 @@ class Pipeline:
         # metrics for reels.meta. Both stay empty when the flag is off.
         self.smart_state: dict = {}
         self.reel_meta_extra: dict = {}
+        # Set by the stitch stage when it joined clips with crossfades: {"overlaps": [...], "fade_s", "count"}.
+        self.transition_info = None
 
     async def _heartbeat(self) -> None:
         """Update the `updated_at` timestamp to signal liveness to the backend."""

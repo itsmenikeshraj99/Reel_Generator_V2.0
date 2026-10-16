@@ -6,6 +6,8 @@ import subprocess
 import tempfile
 from typing import List
 
+from worker.config import settings
+from worker.edit import transitions
 from worker.edit.canvas import fit_filter
 from worker.services.supabase import supabase_client
 
@@ -19,6 +21,36 @@ def _run_ffmpeg(cmd: List[str]) -> None:
         raise RuntimeError(
             f"ffmpeg failed (rc={result.returncode}): {result.stderr[-500:]}"
         )
+
+
+def _try_transitions(pipeline, segments, clips: List[str], output_path: str) -> bool:
+    """Join the cut clips with crossfades where the plan marks them (and the setting is on).
+
+    Returns False, leaving no partial output, when there is nothing to fade or anything goes wrong, so
+    the caller falls back to plain hard cuts.
+    """
+    if pipeline is not None:
+        pipeline.transition_info = None
+    fade_s = settings.TRANSITION_SECONDS if settings.TRANSITIONS_ENABLED else 0.0
+    overlaps = transitions.overlaps_for(segments, fade_s)
+    if not any(overlaps):
+        return False
+    try:
+        graph = transitions.render(clips, overlaps, output_path, _run_ffmpeg)
+    except Exception as exc:  # noqa: BLE001 - never lose the reel over a transition
+        logger.warning("Crossfades failed (%s); using hard cuts instead", exc)
+        try:
+            os.remove(output_path)
+        except OSError:
+            pass
+        return False
+    count = sum(1 for o in overlaps if o > 0)
+    if pipeline is not None:
+        pipeline.transition_info = {"overlaps": overlaps, "fade_s": fade_s, "count": count}
+        if hasattr(pipeline, "reel_meta_extra"):
+            pipeline.reel_meta_extra["transitions"] = {"count": count, "seconds": fade_s}
+    logger.info("Joined %d clips with %d crossfade(s), %.1fs long", len(clips), count, graph.length)
+    return True
 
 
 async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_path: str) -> bool:
@@ -79,6 +111,11 @@ async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_pa
                 clip_path,
             ])
             temp_clips.append(clip_path)
+
+        # 1b. Crossfades at the joins the planner marked (if enabled); otherwise hard cuts below.
+        if _try_transitions(pipeline, segments, temp_clips, output_path):
+            logger.info("Stitched %d segments with crossfades into %s", len(temp_clips), output_path)
+            return True
 
         # 2. Concat
         with open(concat_list_path, "w", encoding="utf-8") as f:

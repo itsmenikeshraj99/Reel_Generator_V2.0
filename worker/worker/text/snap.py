@@ -188,6 +188,7 @@ def snap_plan(
             "end_time": round(c["end"], 3),
             "title": c["beat"].get("label") or f"{c['beat'].get('from_id')}-{c['beat'].get('to_id')}",
             "reason": c["beat"].get("why") or "",
+            "join": c["beat"].get("join"),  # how this beat joins the NEXT one (used for crossfades)
         })
     result.total_seconds = round(total(), 3)
     result.ok = True
