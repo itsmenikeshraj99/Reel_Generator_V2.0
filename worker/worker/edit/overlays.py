@@ -94,23 +94,28 @@ class Item:
     lines: int = 1
 
 
-def plan_items(title: str, shape: str, segments: Sequence[Dict[str, Any]]) -> List[Item]:
-    """The title for the first seconds, and a label at the start of each montage beat after the first."""
+def plan_items(title: str, shape: str, segments: Sequence[Dict[str, Any]],
+               overlaps: Sequence[float] = ()) -> List[Item]:
+    """The title for the first seconds, and a label at the start of each montage beat after the first.
+
+    `overlaps[i]` is how many seconds the end of segment i overlaps the start of the next one (a
+    crossfade), so later beats start that much earlier on the reel's timeline.
+    """
     spans = []
-    for seg in segments:
+    for i, seg in enumerate(segments):
         dur = float(seg["end_time"]) - float(seg["start_time"])
         if dur > 0:
-            spans.append((dur, str(seg.get("title") or "").strip()))
-    total = sum(d for d, _ in spans)
+            spans.append((dur, str(seg.get("title") or "").strip(), overlaps[i] if i < len(overlaps) else 0.0))
+    total = sum(d for d, _, _ in spans) - sum(o for _, _, o in spans[:-1])
     items: List[Item] = []
     if title and total > 0:
         items.append(Item("title", title, 0.0, min(TITLE_SECONDS, total)))
     if shape == "montage":
         t = 0.0
-        for index, (dur, label) in enumerate(spans):
+        for index, (dur, label, overlap) in enumerate(spans):
             if index >= 1 and label and not _DEFAULT_LABEL.match(label):
                 items.append(Item("label", label, t, min(t + LABEL_SECONDS, t + dur)))
-            t += dur
+            t += dur - overlap
     return items
 
 

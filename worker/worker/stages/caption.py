@@ -118,6 +118,7 @@ def _build_ass(
     layout: CaptionLayout = DEFAULT_CAPTION_LAYOUT,
     overlay_lines: Sequence[str] = (),
     extra_styles: str = "",
+    overlaps: Sequence[float] = (),
 ) -> str:
     """Build the full ASS script. Cue time is relative to the *concatenated*
     output (not the source), so we walk segments in order and add per-segment
@@ -139,7 +140,7 @@ def _build_ass(
     events: List[str] = []
     uses_dev = False
     output_t = 0.0
-    for seg in segments:
+    for seg_index, seg in enumerate(segments):
         seg_start = float(seg["start_time"])
         seg_end = float(seg["end_time"])
         if seg_end <= seg_start:
@@ -150,7 +151,7 @@ def _build_ass(
         seg_words = [w for w in words_sorted if w["end"] > seg_start and w["start"] < seg_end]
         if not seg_words:
             # No words in this segment — still bump the timeline.
-            output_t += seg_duration
+            output_t += seg_duration - (overlaps[seg_index] if seg_index < len(overlaps) else 0.0)
             continue
 
         # Group into 2-3 word chunks for readability.
@@ -191,7 +192,7 @@ def _build_ass(
                 f"Dialogue: 0,{_ass_time(cue_in)},{_ass_time(cue_out)},{style},,0,0,0,,{text}"
             )
 
-        output_t += seg_duration
+        output_t += seg_duration - (overlaps[seg_index] if seg_index < len(overlaps) else 0.0)
 
     styles = ((_dev_caption_style(layout) + "\n") if uses_dev else "") + extra_styles
     return _header(layout, styles.strip("\n")) + "\n".join(list(events) + list(overlay_lines)) + "\n"
@@ -204,7 +205,8 @@ def _fetch_plan(video_id: str) -> Optional[Dict[str, Any]]:
     return res.data[0]["plan"] if res.data else None
 
 
-async def _prepare_overlays(video_id: str, segments: List[Dict[str, Any]], source_path: Optional[str]):
+async def _prepare_overlays(video_id: str, segments: List[Dict[str, Any]], source_path: Optional[str],
+                            overlaps: Sequence[float] = ()):
     """(dialogue lines, extra styles, info for reels.meta) for the hook title and point labels."""
     plan = _fetch_plan(video_id)
     if not plan:
@@ -212,7 +214,7 @@ async def _prepare_overlays(video_id: str, segments: List[Dict[str, Any]], sourc
     size = probe_display_size(source_path) if (source_path and settings.REFRAME_MODE == "fit") else None
     box = picture_box(*size) if size else Box(0, 0, CANVAS_W, CANVAS_H)
     layout = overlays.overlay_layout(box)
-    items = overlays.plan_items(clean_title(plan.get("title")), plan.get("shape", ""), segments)
+    items = overlays.plan_items(clean_title(plan.get("title")), plan.get("shape", ""), segments, overlaps)
     fitted = await overlays.fit_items(items)
     info = {"title": any(i.kind == "title" for i in fitted),
             "labels": sum(1 for i in fitted if i.kind == "label"), "boxed": layout.boxed}
@@ -244,17 +246,19 @@ async def burn_captions(
             logger.warning("No accepted segments for %s; skipping captions", video_id)
             return False
 
+        # Crossfades (if the stitch stage used them) pull later beats earlier; keep text in step.
+        overlaps = list((getattr(pipeline, "transition_info", None) or {}).get("overlaps", []))
         overlay_lines: List[str] = []
         extra_styles = ""
         if settings.TEXT_OVERLAYS_ENABLED:
             try:
-                overlay_lines, extra_styles, info = await _prepare_overlays(video_id, segments, source_path)
+                overlay_lines, extra_styles, info = await _prepare_overlays(video_id, segments, source_path, overlaps)
             except Exception as exc:  # noqa: BLE001 - captions alone are better than no reel
                 logger.exception("Text overlays failed for %s (%s); captions only", video_id, exc)
                 overlay_lines, extra_styles, info = [], "", {"error": str(exc)[:200]}
             if pipeline is not None and hasattr(pipeline, "reel_meta_extra"):
                 pipeline.reel_meta_extra["overlays"] = info
-        ass_text = _build_ass(segments, words, _layout_for(source_path), overlay_lines, extra_styles)
+        ass_text = _build_ass(segments, words, _layout_for(source_path), overlay_lines, extra_styles, overlaps)
         if "Dialogue:" not in ass_text:
             logger.warning("No words overlap segments for %s; skipping captions", video_id)
             return False

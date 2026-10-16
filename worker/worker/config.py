@@ -53,6 +53,10 @@ class WorkerSettings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_ASR_MODEL: str = "whisper-large-v3-turbo"
 
+    # Short crossfades at topic/point changes between montage beats (smart pipeline plans only).
+    TRANSITIONS_ENABLED: bool = False
+    TRANSITION_SECONDS: float = 0.3
+
     # Hook title and point labels drawn on the reel (smart pipeline plans only).
     TEXT_OVERLAYS_ENABLED: bool = False
 
@@ -108,6 +112,13 @@ class WorkerSettings(BaseSettings):
     def _validate_transient_retries(cls, v: int) -> int:
         if not 0 <= v <= 5:
             raise ValueError(f"GEMINI_TRANSIENT_RETRIES={v} must be between 0 and 5")
+        return v
+
+    @field_validator("TRANSITION_SECONDS")
+    @classmethod
+    def _validate_transition_seconds(cls, v: float) -> float:
+        if not 0.15 <= v <= 0.6:
+            raise ValueError(f"TRANSITION_SECONDS={v} must be between 0.15 and 0.6")
         return v
 
     @field_validator("REFRAME_MODE")
