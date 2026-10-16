@@ -20,6 +20,10 @@ module.exports = {
         text:          "rgb(var(--text) / <alpha-value>)",
         "text-muted":  "rgb(var(--text-muted) / <alpha-value>)",
         "text-subtle": "rgb(var(--text-subtle) / <alpha-value>)",
+        // Status colours (see src/lib/status.ts): yellow = working, green = done, red = failed.
+        warning:       "rgb(var(--warning) / <alpha-value>)",
+        success:       "rgb(var(--success) / <alpha-value>)",
+        danger:        "rgb(var(--danger) / <alpha-value>)",
       },
       // Phase 11 animations. Used by Toast (toast-in), AppShell drawer
       // (toast-in reused for fade), and any "in progress" indicators.

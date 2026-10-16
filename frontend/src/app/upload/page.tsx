@@ -28,18 +28,11 @@ import { UploadDropzone } from "@/components/UploadDropzone";
 import { Skeleton } from "@/components/Skeleton";
 import { useToast } from "@/components/Toast";
 import { api, uploadFileToSignedUrl } from "@/lib/api";
+import { nextAction, uploadPhase, type FailedStep, type UploadStatus } from "@/lib/status";
 import { supabase } from "@/lib/supabase";
 
 const MAX_SIZE_MB = 500;
 const ALLOWED_MIME_PREFIX = "video/";
-
-type UploadStatus =
-  | "idle"
-  | "uploading"
-  | "processed"
-  | "processing"
-  | "success"
-  | "error";
 
 export default function UploadPage() {
   const router = useRouter();
@@ -51,6 +44,8 @@ export default function UploadPage() {
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
+  // Which step last failed, so "Try again" repeats the right one (not always the upload).
+  const [failedStep, setFailedStep] = useState<FailedStep>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   // Client-side auth gate.
@@ -76,22 +71,24 @@ export default function UploadPage() {
     setStatus("idle");
     setError(null);
     setProgress(0);
+    setFailedStep(null);
     if (clearInput && inputRef.current) inputRef.current.value = "";
   };
 
   const handleFilePicked = (picked: File) => {
     if (!picked.type.startsWith(ALLOWED_MIME_PREFIX)) {
-      setError("Please select a video file.");
       reset();
+      setError("Please select a video file."); // after reset(), which clears the error
       return;
     }
     if (picked.size > MAX_SIZE_MB * 1024 * 1024) {
-      setError(`File size exceeds ${MAX_SIZE_MB}MB limit.`);
       reset();
+      setError(`File size exceeds ${MAX_SIZE_MB}MB limit.`); // after reset(), which clears the error
       return;
     }
     setFile(picked);
     setError(null);
+    setFailedStep(null);
     setStatus("idle");
     setVideoId(null);
   };
@@ -100,6 +97,7 @@ export default function UploadPage() {
     if (!file) return;
     setStatus("uploading");
     setError(null);
+    setFailedStep(null);
     setProgress(0);
 
     try {
@@ -132,6 +130,7 @@ export default function UploadPage() {
       setProgress(100);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Upload failed.";
+      setFailedStep("upload");
       setError(msg);
       toastError(msg);
       setStatus("error");
@@ -142,6 +141,7 @@ export default function UploadPage() {
     if (!videoId) return;
     setStatus("processing");
     setError(null);
+    setFailedStep(null);
 
     try {
       await api.processVideo(videoId);
@@ -153,6 +153,7 @@ export default function UploadPage() {
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : "Failed to start processing.";
+      setFailedStep("process");
       setError(msg);
       toastError(msg);
       setStatus("error");
@@ -165,14 +166,29 @@ export default function UploadPage() {
   const isProcessed = status === "processed";
   const isSuccess = status === "success";
 
+  const isError = status === "error";
+  // The upload worked but starting the pipeline failed: retry only that step, do not upload again.
+  const retryStart = isError && failedStep === "process" && !!videoId;
+
   const buttonLabel = (() => {
     if (isUploading) return `Uploading… ${progress}%`;
     if (isProcessing) return "Starting pipeline…";
     if (isProcessed) return "Generate AI Reels ✨";
+    if (retryStart) return "Try again: start processing";
+    if (isError) return "Try again: upload";
     return "Upload Video 📤";
   })();
 
-  const buttonAction = isProcessed ? handleProcess : handleUpload;
+  const buttonAction =
+    nextAction({ status, failedStep, hasVideoId: !!videoId }) === "process" ? handleProcess : handleUpload;
+
+  // What colour/icon the upload box shows (yellow = working, green = done, red = failed).
+  const phase = uploadPhase({ status, hasFile: !!file, hasError: !!error });
+  const phaseDetail = retryStart
+    ? "Uploaded, but the pipeline did not start"
+    : isError && file
+      ? "Upload failed"
+      : undefined;
 
   if (!authChecked) {
     return (
@@ -207,6 +223,8 @@ export default function UploadPage() {
             file={file}
             onFile={handleFilePicked}
             error={error && !isUploading && !isProcessing ? error : null}
+            phase={phase}
+            detail={phaseDetail}
             disabled={isBusy}
             maxSizeMB={MAX_SIZE_MB}
           />
@@ -214,14 +232,14 @@ export default function UploadPage() {
           {/* Progress bar — only shown during upload */}
           {isUploading && (
             <div className="mt-6">
-              <ProgressBar value={progress} label="Uploading" />
+              <ProgressBar value={progress} label="Uploading" tone={progress >= 100 ? "success" : "active"} />
             </div>
           )}
 
           {/* Indeterminate bar while backend kicks off the pipeline */}
           {isProcessing && (
             <div className="mt-6">
-              <ProgressBar indeterminate label="Starting pipeline" />
+              <ProgressBar indeterminate label="Starting pipeline" tone="active" />
             </div>
           )}
 

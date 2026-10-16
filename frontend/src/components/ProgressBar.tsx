@@ -13,6 +13,7 @@
  */
 
 import { cn } from "@/lib/cn";
+import { TONE, type Tone } from "@/lib/status";
 
 interface ProgressBarProps {
   /** 0-100. Ignored if `indeterminate` is true. */
@@ -23,6 +24,8 @@ interface ProgressBarProps {
   label?: string;
   /** Optional className for the outer wrapper. */
   className?: string;
+  /** Fill colour: "brand" (default, the pink-to-cyan gradient) or a status tone. */
+  tone?: "brand" | Tone;
 }
 
 export function ProgressBar({
@@ -30,6 +33,7 @@ export function ProgressBar({
   indeterminate = false,
   label,
   className,
+  tone = "brand",
 }: ProgressBarProps) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
 
@@ -52,7 +56,7 @@ export function ProgressBar({
         <div
           className={cn(
             "h-full rounded-full transition-all duration-300 ease-out",
-            "bg-gradient-to-r from-primary to-secondary",
+            tone === "brand" ? "bg-gradient-to-r from-primary to-secondary" : TONE[tone].bar,
             indeterminate && "animate-pulse-stage w-full",
           )}
           style={indeterminate ? undefined : { width: `${pct}%` }}
