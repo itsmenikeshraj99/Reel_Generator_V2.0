@@ -10,9 +10,9 @@ on-screen title/labels use them so their timing stays in step with the picture.
 """
 import subprocess
 from dataclasses import dataclass
-from typing import Any, Callable, List, Optional, Sequence
+from typing import Any, Callable, List, Optional, Sequence, Tuple
 
-from worker.edit.canvas import fit_filter
+from worker.edit.canvas import CANVAS_H, CANVAS_W, fit_filter
 
 FADE_JOINS = ("topic_change", "point_change")
 CLIP_MARGIN_S = 0.2   # a clip must be at least 2 x fade + this long to be faded on both sides
@@ -62,7 +62,8 @@ class Graph:
     length: float
 
 
-def build_graph(durations: Sequence[float], overlaps: Sequence[float], has_audio: bool, fps: int = FPS) -> Graph:
+def build_graph(durations: Sequence[float], overlaps: Sequence[float], has_audio: bool, fps: int = FPS,
+                canvas: Tuple[int, int] = (CANVAS_W, CANVAS_H)) -> Graph:
     """The ffmpeg filter graph that fits every input clip onto the canvas and joins them left to right.
 
     Input i is clip i. Fading joins use xfade + acrossfade; the others use concat. After a concat the
@@ -71,7 +72,7 @@ def build_graph(durations: Sequence[float], overlaps: Sequence[float], has_audio
     n = len(durations)
     if n == 0:
         raise ValueError("no clips to join")
-    fit = fit_filter()
+    fit = fit_filter(*canvas)
     parts: List[str] = []
     for i in range(n):
         parts.append(f"[{i}:v]{fit},fps={fps},format=yuv420p,settb=1/{fps},setpts=PTS-STARTPTS[v{i}]")
@@ -111,22 +112,31 @@ def has_audio_stream(path: str) -> bool:
     return bool(out)
 
 
-def render(clips: Sequence[str], overlaps: Sequence[float], output_path: str,
-           run: Callable[[List[str]], None]) -> Graph:
-    """Join the already-cut clips with the planned crossfades into `output_path` (one ffmpeg pass)."""
+def build_command(clips: Sequence[str], overlaps: Sequence[float], output_path: str,
+                  canvas: Tuple[int, int] = (CANVAS_W, CANVAS_H), crf: int = 20,
+                  audio_kbps: int = 192) -> Tuple[List[str], Graph]:
+    """The single ffmpeg command (and its graph) that joins the already-cut clips with the planned crossfades."""
     durations = [probe_duration(c) for c in clips]
     if any(d <= 0 for d in durations):
         raise RuntimeError("a cut clip is empty")
     audio = all(has_audio_stream(c) for c in clips)
-    graph = build_graph(durations, overlaps, audio)
+    graph = build_graph(durations, overlaps, audio, canvas=canvas)
     cmd = ["ffmpeg", "-y", "-threads", "1", "-filter_threads", "1", "-filter_complex_threads", "1"]
     for c in clips:
         cmd += ["-i", c]
     cmd += ["-filter_complex", graph.filter_complex, "-map", f"[{graph.video_label}]"]
     if audio:
         cmd += ["-map", f"[{graph.audio_label}]"]
-    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", "20"]
-    cmd += ["-c:a", "aac", "-b:a", "192k"] if audio else ["-an"]
+    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", str(crf)]
+    cmd += ["-c:a", "aac", "-b:a", f"{audio_kbps}k"] if audio else ["-an"]
     cmd += ["-movflags", "+faststart", output_path]
+    return cmd, graph
+
+
+def render(clips: Sequence[str], overlaps: Sequence[float], output_path: str,
+           run: Callable[[List[str]], None], canvas: Tuple[int, int] = (CANVAS_W, CANVAS_H),
+           crf: int = 20, audio_kbps: int = 192) -> Graph:
+    """Join the already-cut clips with the planned crossfades into `output_path` (one ffmpeg pass)."""
+    cmd, graph = build_command(clips, overlaps, output_path, canvas, crf, audio_kbps)
     run(cmd)
     return graph

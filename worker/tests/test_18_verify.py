@@ -118,9 +118,11 @@ async def main() -> bool:
         s = v.VERIFY_SCHEMA_DICT
         assert_(set(s["required"]) == set(s["properties"]), "required")
         assert_(s["properties"]["verdict"]["enum"] == list(v.VERDICTS), "verdict enum")
-        assert_("verify-v2" in v.__doc__ and "abrupt_cuts" in v.VERIFY_PROMPT, "prompt")
+        assert_("verify-v3" in v.__doc__ and "abrupt_cuts" in v.VERIFY_PROMPT, "prompt")
         low = v.VERIFY_PROMPT.lower()
         assert_("hard cuts" in low and "do not judge" in low and "planner cannot do those" in low, "v2 guidance missing")
+        flat = " ".join(low.split())  # ignore line breaks
+        assert_("same short crossfade as the final reel" in flat, "the draft's crossfades must be explained")
     results.append(t["passed"])
 
     class FakeFiles:

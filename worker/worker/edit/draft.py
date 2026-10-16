@@ -4,14 +4,20 @@ Hard cuts only, low resolution, audio kept. The draft is thrown away
 after verification; it is never shown to users.
 """
 import asyncio
+import logging
 import os
 import subprocess
 import tempfile
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Sequence
 
+from worker.edit import transitions
+
+logger = logging.getLogger("edit_draft")
+
 Runner = Callable[[List[str]], Awaitable[None]]
 
 DRAFT_HEIGHT = 360
+DRAFT_CANVAS = (480, 854)  # a small 9:16 canvas, used when the draft has crossfades (as the final reel does)
 
 
 async def _default_runner(cmd: List[str], timeout: int = 900) -> None:
@@ -31,7 +37,7 @@ def _check_segments(segments: Sequence[Dict[str, Any]]) -> List[Dict[str, float]
             raise ValueError(f"bad segment {seg!r}") from exc
         if not end > start >= 0:
             raise ValueError(f"bad segment {seg!r}")
-        out.append({"start": start, "dur": end - start})
+        out.append({"start": start, "dur": end - start, "join": seg.get("join")})
     return out
 
 
@@ -40,8 +46,10 @@ async def render_draft(
     segments: Sequence[Dict[str, Any]],
     out_path: str,
     runner: Optional[Runner] = None,
+    fade_s: float = 0.0,
 ) -> str:
-    """Cut each segment small and join them with hard cuts into `out_path`.
+    """Cut each segment small and join them into `out_path`: with the same short crossfades the final
+    reel will have (when `fade_s` > 0 and the plan marks fading joins), otherwise with hard cuts.
 
     `runner` runs one ffmpeg command (pass `pipeline._run_with_heartbeat`
     inside the worker so the job keeps sending heartbeats).
@@ -63,6 +71,19 @@ async def render_draft(
                 part,
             ])
             parts.append(part)
+        overlaps = transitions.overlaps_for(
+            [{"start_time": 0.0, "end_time": c["dur"], "join": c["join"]} for c in cuts], fade_s)
+        if any(overlaps):
+            try:
+                cmd, _ = transitions.build_command(parts, overlaps, out_path, canvas=DRAFT_CANVAS, crf=32, audio_kbps=64)
+                await run(cmd)
+                return out_path
+            except Exception as exc:  # noqa: BLE001 - the draft only needs to exist; fall back to hard cuts
+                logger.warning("Crossfade draft failed (%s); using hard cuts", exc)
+                try:
+                    os.remove(out_path)
+                except OSError:
+                    pass
         with open(list_path, "w", encoding="utf-8") as f:
             for part in parts:
                 f.write("file '" + part.replace("\\", "/") + "'\n")
