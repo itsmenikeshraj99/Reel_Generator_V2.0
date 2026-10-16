@@ -20,6 +20,9 @@
   --text-subtle:  100 116 139;   /* slate-500 */
   --primary:        #FF0050;
   --secondary:      #00F2EA;
+  --warning:       202 138   4;  /* yellow-600: readable on a light card */
+  --success:        22 163  74;  /* green-600 */
+  --danger:        220  38  38;  /* red-600 */
   --gradient-bg:   linear-gradient(135deg, #f0f4ff 0%, #fdf2f8 100%);
   color-scheme: light;
 }
@@ -35,6 +38,9 @@
   --text-subtle:  100 116 139;
   --primary:        #FF0050;
   --secondary:      #00F2EA;
+  --warning:       250 204  21;  /* yellow-400: readable on a dark card */
+  --success:        74 222 128;  /* green-400 */
+  --danger:        248 113 113;  /* red-400 */
   --gradient-bg:   linear-gradient(135deg, #0f0f1a 0%, #1a0a14 50%, #0a0f1a 100%);
   color-scheme: dark;
 }

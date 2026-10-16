@@ -248,7 +248,7 @@ export default function StatusClient() {
               ) : isFailed ? (
                 <AlertCircle size={48} className="text-red-400" />
               ) : (
-                <Loader2 className="animate-spin text-primary" size={48} />
+                <Loader2 className="animate-spin text-warning" size={48} />
               )}
             </div>
             <h1 className="text-3xl font-bold mb-2">
@@ -281,7 +281,7 @@ export default function StatusClient() {
                   className={`h-full transition-all duration-700 ease-out ${
                     isReady
                       ? "bg-green-500"
-                      : "bg-gradient-to-r from-primary to-secondary"
+                      : "bg-warning"
                   }`}
                   style={{ width: `${progressPct}%` }}
                 />
@@ -370,7 +370,7 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
     <div
       className={`flex items-center gap-4 p-3 rounded-xl transition-all duration-500 ${
         isActive
-          ? "bg-black/5 scale-[1.02] border border-border"
+          ? "bg-warning/5 scale-[1.02] border border-warning/40"
           : isDone
             ? "bg-green-500/5 border border-green-500/20"
             : isFailed
@@ -383,7 +383,7 @@ function StageRow({ stage, state }: { stage: StageConfig; state: StageState }) {
           isDone
             ? "bg-green-500 text-white"
             : isActive
-              ? "bg-black/10 text-current"
+              ? "bg-warning/15 text-warning"
               : isFailed
                 ? "bg-red-500/20 text-red-400"
                 : "bg-black/5"
