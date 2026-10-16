@@ -322,7 +322,7 @@ async def main() -> bool:
         async def fake_silences(path, dur=None):
             return [(2.0, 2.5)]
 
-        async def fake_render(video, segs, out, runner=None):
+        async def fake_render(video, segs, out, runner=None, fade_s=None):
             await runner(["ffmpeg", "fake"])
             open(out, "wb").write(b"x")
             return out

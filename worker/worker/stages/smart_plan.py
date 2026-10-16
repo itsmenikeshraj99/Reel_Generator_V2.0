@@ -142,7 +142,9 @@ async def run_select(pipe: Any, video_path: str) -> bool:
     async def make_draft(segments: List[Dict[str, Any]]) -> str:
         out = os.path.join(tempfile.gettempdir(), f"draft_{vid}_{uuid.uuid4().hex[:6]}.mp4")
         try:
-            return await render_draft(video_path, segments, out, runner=pipe._run_with_heartbeat)
+            return await render_draft(
+                video_path, segments, out, runner=pipe._run_with_heartbeat,
+                fade_s=settings.TRANSITION_SECONDS if settings.TRANSITIONS_ENABLED else 0.0)
         except Exception:
             try:
                 os.remove(out)

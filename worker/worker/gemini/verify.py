@@ -1,6 +1,6 @@
 """Smart pipeline, call 3: watch the draft and judge it.
 
-Prompt version: verify-v2
+Prompt version: verify-v3
 
 Gemini watches a small draft of the reel together with the plan's reason
 and, for every beat, the sentence just before and just after it in the
@@ -28,9 +28,9 @@ NON_ACTIONABLE = (
 )
 
 VERIFY_PROMPT = """You are a strict editor watching a DRAFT of a short reel assembled from a longer video.
-The draft is low resolution and uses plain HARD CUTS with no transitions, music or smoothing: those are
-added later. So do NOT judge how rough a cut sounds or looks. Judge only whether the CONTENT works for a
-viewer who has never seen the full video.
+The draft is low resolution and has no music. Where the plan marks a topic or point change it has the same
+short crossfade as the final reel; the other joins are plain HARD CUTS. Either way, do NOT judge how rough a
+cut sounds or looks. Judge only whether the CONTENT works for a viewer who has never seen the full video.
 
 You also get the plan's stated reason, and for each beat the sentence that came just before and just
 after it in the ORIGINAL video, so you can tell whether a clip changes the speaker's meaning.
