@@ -536,6 +536,11 @@ class Pipeline:
             if await burn_captions(self, self.video_id, output_path, captioned_path, source_path=video_path):
                 final_path = captioned_path
 
+            # 4. Optional background music (only when the user asked for it); edits final_path in place and
+            #    leaves it untouched on any problem.
+            from worker.stages.music import add_music
+            await add_music(self, self.video_id, final_path)
+
             # --- Adaptive Size Control ---
             # Supabase Free plan has a 50 MiB upload limit. We target 45 MiB.
             TARGET_SIZE_BYTES = 45 * 1024 * 1024

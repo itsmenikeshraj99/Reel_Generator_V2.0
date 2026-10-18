@@ -21,7 +21,8 @@ create table if not exists videos (
     gcs_uri text not null,
     expires_at timestamp with time zone not null,
     created_at timestamp with time zone default current_timestamp,
-    updated_at timestamp with time zone default current_timestamp
+    updated_at timestamp with time zone default current_timestamp,
+    add_music boolean not null default false  -- the user's "add music" checkbox (migration 006)
 );
 
 -- Transcripts Table: Stores Gemini transcription output.

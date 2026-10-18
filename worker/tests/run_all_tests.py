@@ -71,6 +71,7 @@ TESTS: List[Tuple[str, str]] = [
     ("test_27_draft_crossfades", "Test 27: Draft with crossfades"),
     ("test_28_music_library", "Test 28: Music library"),
     ("test_29_music_mix", "Test 29: Music mix"),
+    ("test_30_music_wire", "Test 30: Music in the pipeline"),
 ]
 
 
