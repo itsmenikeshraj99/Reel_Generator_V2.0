@@ -37,6 +37,8 @@ except Exception as exc:  # noqa: BLE001
 # --- Pydantic request models ---
 class UploadRequest(BaseModel):
     filename: str = Field(..., min_length=1, max_length=255)
+    # The "add background music" checkbox on the upload page. Off unless the user ticks it.
+    add_music: bool = False
 
 
 class ProcessRequest(BaseModel):
@@ -65,15 +67,21 @@ async def get_upload_info(
     storage_path = f"{current.id}/{safe_filename}"
     expires_at = (datetime.now(timezone.utc) + timedelta(hours=24)).isoformat()
 
+    row = {
+        "id": video_id,
+        "user_id": current.id,
+        "filename": request.filename,
+        "status": "PENDING_UPLOAD",
+        "gcs_uri": storage_path,
+        "expires_at": expires_at,
+    }
+    if request.add_music:
+        # Only sent when ticked, so uploads without music keep working on a database that has not
+        # been given migration 006 yet.
+        row["add_music"] = True
+
     try:
-        supabase.table("videos").insert({
-            "id": video_id,
-            "user_id": current.id,
-            "filename": request.filename,
-            "status": "PENDING_UPLOAD",
-            "gcs_uri": storage_path,
-            "expires_at": expires_at,
-        }).execute()
+        supabase.table("videos").insert(row).execute()
     except Exception as exc:  # noqa: BLE001
         logger.error("DB insert failed for user %s: %s", current.id, exc)
         raise HTTPException(status_code=500, detail="Could not create video record")

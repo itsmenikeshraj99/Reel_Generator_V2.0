@@ -113,10 +113,10 @@ export interface VideoListResponse {
 }
 
 export const api = {
-  async uploadUrl(filename: string): Promise<UploadUrlResponse> {
+  async uploadUrl(filename: string, addMusic = false): Promise<UploadUrlResponse> {
     return request<UploadUrlResponse>("/videos/upload-url", {
       method: "POST",
-      body: JSON.stringify({ filename }),
+      body: JSON.stringify({ filename, add_music: addMusic }),
     });
   },
 

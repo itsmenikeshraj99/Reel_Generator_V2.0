@@ -15,6 +15,12 @@ worker/assets/music/
 The planner picks one mood word per reel (calm, upbeat, serious or inspiring); a track is chosen from
 that folder. If the chosen folder is empty, the reel simply has no music (it never fails because of it).
 
+## When music is used
+Only for reels where the user ticked **Add background music** on the upload page (off by default; needs
+migration 006). The planner picks the mood from what the video says and how it feels, or says "none" for
+content where music would be out of place. The music is set about 20 dB under the speech, ducked further
+while someone speaks, faded in and out, and the whole reel is levelled to -14 LUFS.
+
 ## Sound effects
 `sfx/` holds short transition sounds (whooshes, 0.3 to 1 s). One is played, quietly, at each crossfade
 between montage beats. Same rules: drop a file in, optional `<name>.txt` for the source. Empty = no effect.

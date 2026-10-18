@@ -44,6 +44,9 @@ export default function UploadPage() {
   const [status, setStatus] = useState<UploadStatus>("idle");
   const [progress, setProgress] = useState(0);
   const [videoId, setVideoId] = useState<string | null>(null);
+  // "Add background music" checkbox. Off by default; locked once the upload has started
+  // because the choice is saved with the video.
+  const [addMusic, setAddMusic] = useState(false);
   // Which step last failed, so "Try again" repeats the right one (not always the upload).
   const [failedStep, setFailedStep] = useState<FailedStep>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
@@ -104,7 +107,7 @@ export default function UploadPage() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("You must be logged in to upload.");
 
-      const uploadInfo = await api.uploadUrl(file.name);
+      const uploadInfo = await api.uploadUrl(file.name, addMusic);
       setVideoId(uploadInfo.video_id);
 
       // PR 11 path: use the signed upload URL for progress reporting.
@@ -228,6 +231,28 @@ export default function UploadPage() {
             disabled={isBusy}
             maxSizeMB={MAX_SIZE_MB}
           />
+
+          {file && !isSuccess && (
+            <label
+              className={`mt-4 flex items-start gap-3 rounded-xl border border-white/10 bg-white/5 p-4 text-left text-sm ${
+                isBusy || videoId ? "opacity-60" : "cursor-pointer"
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={addMusic}
+                onChange={(e) => setAddMusic(e.target.checked)}
+                disabled={isBusy || !!videoId}
+                className="mt-0.5 h-4 w-4 accent-purple-500"
+              />
+              <span>
+                <span className="font-semibold">Add background music</span>
+                <span className="block opacity-70">
+                  Soft music that fits the video and stays quiet under the speaker. Off by default.
+                </span>
+              </span>
+            </label>
+          )}
 
           {/* Progress bar — only shown during upload */}
           {isUploading && (

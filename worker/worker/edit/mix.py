@@ -61,6 +61,11 @@ def stream_duration(path: str, kind: str) -> float:
     return float(out[0])
 
 
+def _av_gap(path: str) -> float:
+    """Picture length minus sound length. Mixing must not change it (that would be drift)."""
+    return stream_duration(path, "v:0") - stream_duration(path, "a:0")
+
+
 def has_audio(path: str) -> bool:
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "a", "-show_entries", "stream=index", "-of", "csv=p=0", path],
                          capture_output=True, text=True, timeout=30, check=True).stdout.strip()
@@ -191,8 +196,8 @@ def mix_reel(reel_path: str, out_path: str, track_path: str, *, join_times: Sequ
         second = (f"{ln}:measured_I={m['input_i']}:measured_TP={m['input_tp']}:measured_LRA={m['input_lra']}:"
                   f"measured_thresh={m['input_thresh']}:offset={m['target_offset']}:linear=true")
         _run(["ffmpeg", "-y", "-loglevel", "error", "-i", reel_path, "-i", mix_wav, "-map", "0:v:0", "-map", "1:a:0",
-              "-af", second + ",aresample=48000", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
-              "-movflags", "+faststart", "-shortest", out_path])
+              "-af", second + f",aresample=48000,apad=whole_dur={stream_duration(reel_path, 'v:0'):.3f}", "-c:v", "copy", "-c:a", "aac", "-b:a", "160k", "-ar", "48000",
+              "-movflags", "+faststart", "-t", f"{reel_s:.3f}", out_path])
 
         final = measure_lufs(out_path)
         stem = measure_lufs(stem_wav)
@@ -205,7 +210,7 @@ def mix_reel(reel_path: str, out_path: str, track_path: str, *, join_times: Sequ
             "target_lufs": target_lufs,
             "final_peak_db": round(final["peak_db"], 1),
             "sfx_count": used_sfx,
-            "av_drift_s": round(abs(stream_duration(out_path, "v:0") - stream_duration(out_path, "a:0")), 3),
+            "av_drift_s": round(abs(_av_gap(out_path) - _av_gap(reel_path)), 3),
         })
     finally:
         for p in (speech_wav, stem_wav, mix_wav):
