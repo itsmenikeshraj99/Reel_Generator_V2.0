@@ -5,6 +5,6 @@ Type:     music (inspiring)
 Title:    inspiring cinematic (name taken from the file name)
 Artist:   Kulakovka (taken from the file name)
 Pixabay ID: 272565 (the number at the end of the file name)
-URL:      TO CONFIRM - open the track's Pixabay page and paste its address here
+URL:      https://pixabay.com/music/main-title-inspiring-cinematic-272565/
 Licence:  Pixabay Content Licence (https://pixabay.com/service/license-summary/)
 Added:    2026-10-18
