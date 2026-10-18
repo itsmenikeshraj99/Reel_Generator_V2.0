@@ -40,6 +40,7 @@ _NEIGHBOURS: Dict[str, tuple] = {
     "serious": ("calm", "inspiring", "upbeat"),
     "inspiring": ("upbeat", "calm", "serious"),
 }
+MAX_SFX_FILE_S = 6.0   # a transition sound is short; longer files are music cues and are ignored in sfx/
 NO_MUSIC_WORDS = ("none", "no music", "no_music", "silence", "silent")
 
 
@@ -158,5 +159,5 @@ def pick_track(video_id: str, mood: Optional[str], reel_seconds: float, root: Op
 
 def pick_sfx(video_id: str, root: Optional[str] = None,
              probe: Callable[[str], Optional[float]] = probe_duration) -> Optional[Track]:
-    sfx = list_sfx(root, probe)
+    sfx = [s for s in list_sfx(root, probe) if (s.duration_s or 0) <= MAX_SFX_FILE_S]
     return sfx[_stable_index("sfx:" + video_id, len(sfx))] if sfx else None

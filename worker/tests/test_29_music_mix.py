@@ -135,6 +135,18 @@ async def main() -> bool:
         assert_(talking - with_ >= 8.0, f"but stays {talking - with_:.1f} dB under the speech")
     results.append(t["passed"])
 
+    with test_case("a sound that opens with a near-silent build-up is trimmed to start where it gets loud") as t:
+        late = os.path.join(tmp, "late_whoosh.wav")
+        run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "anoisesrc=d=4:c=pink:r=48000",
+             "-af", "volume='if(lt(t,1.5),0.002,1)':eval=frame,afade=t=out:st=2.5:d=1.5", "-ac", "2", late])
+        start = mix.sfx_start(late)
+        assert_(1.0 <= start <= 1.6, f"onset found at {start:.2f}s (the loud part begins at 1.5 s)")
+        late_out = os.path.join(tmp, "late_out.mp4")
+        mix.mix_reel(reel, late_out, music, join_times=[5.0], sfx_path=late)
+        gap_base = lufs(out, 5.05, 0.5)
+        assert_(lufs(late_out, 5.05, 0.5) - gap_base >= 3.0, "the audible part, not the silence, lands on the crossfade")
+    results.append(t["passed"])
+
     with test_case("level follows the speech: quiet and loud recordings get the same relative music level") as t:
         quiet, loud = os.path.join(tmp, "q.mp4"), os.path.join(tmp, "l.mp4")
         make_reel(quiet, speech_db=-12.0)
