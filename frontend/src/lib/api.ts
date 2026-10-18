@@ -80,6 +80,9 @@ export interface Reel {
   id?: string;
   title: string | null;
   url: string;
+  // Link that saves the file under download_name (older backends omit both; fall back to url).
+  download_url?: string;
+  download_name?: string;
   storage_path?: string;
 }
 

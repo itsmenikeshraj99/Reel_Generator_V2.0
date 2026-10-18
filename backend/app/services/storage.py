@@ -1,3 +1,4 @@
+import urllib.parse
 from typing import Optional
 
 try:
@@ -90,10 +91,15 @@ class StorageService:
         return str(result)
 
     # --- Signed URL (preferred for production) ---
-    def create_signed_url(self, path: str, expires_in: int = 3600) -> Optional[str]:
-        """Return a signed URL good for `expires_in` seconds, or None on failure."""
+    def create_signed_url(self, path: str, expires_in: int = 3600, download_name: Optional[str] = None) -> Optional[str]:
+        """Return a signed URL good for `expires_in` seconds, or None on failure.
+
+        With `download_name` the link makes the browser save the file under that name (the storage object is
+        named after the video id, and the HTML `download` attribute is ignored for files on another domain).
+        """
         try:
-            res = supabase.storage.from_(self.bucket).create_signed_url(path, expires_in)
+            options = {"download": urllib.parse.quote(download_name)} if download_name else {}
+            res = supabase.storage.from_(self.bucket).create_signed_url(path, expires_in, options)
             if isinstance(res, dict):
                 return res.get("signedUrl") or res.get("signed_url")
             return getattr(res, "signed_url", None) or getattr(res, "signedURL", None)

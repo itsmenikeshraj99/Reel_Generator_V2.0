@@ -462,6 +462,7 @@ class Pipeline:
         from worker.stages.reframe import reframe_video
         from worker.stages.stitch import stitch_and_caption
         from worker.stages.caption import burn_captions
+        from worker.stages.naming import reel_title
 
         # Quality flag — drives the `meta` jsonb on the reels row so the
         # frontend can label a degraded reel accordingly. The default is
@@ -622,7 +623,7 @@ class Pipeline:
             reels_row = {
                 "video_id": self.video_id,
                 "storage_path": storage_target,
-                "title": "AI Generated Reel",
+                "title": reel_title(self.video_id),
             }
             try:
                 supabase_client.table("reels").insert({
