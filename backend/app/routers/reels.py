@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, status
 from app.config import settings
 from app.models.schemas import GenerateReelsRequest
 from app.services.auth import CurrentUser, get_current_user
+from app.services.download_name import download_filename
 from app.services.logger import get_logger
 from app.services.storage import storage_service
 from app.services.supabase import supabase
@@ -65,8 +66,17 @@ async def get_reels(
     if not res.data:
         return {"reels": []}
 
+    try:
+        vres = supabase.table("videos").select("filename").eq("id", video_id).execute()
+        original_name = (vres.data or [{}])[0].get("filename")
+    except Exception:  # noqa: BLE001 - the name is a nicety, never a reason to fail
+        original_name = None
+
     reels_out = []
+    taken: list = []
     for reel in res.data:
+        name = download_filename(reel.get("title"), original_name, taken)
+        taken.append(name)
         try:
             # Prefer signed URL for production. Falls back to public URL.
             url = (
@@ -75,10 +85,17 @@ async def get_reels(
             )
         except Exception:  # noqa: BLE001
             url = ""
+        try:
+            download_url = storage_service.create_signed_url(
+                reel["storage_path"], expires_in=3600, download_name=name) or url
+        except Exception:  # noqa: BLE001
+            download_url = url
         reels_out.append({
             "id": reel.get("id"),
             "title": reel.get("title"),
             "url": url,
+            "download_url": download_url,
+            "download_name": name,
             "storage_path": reel.get("storage_path"),
         })
 

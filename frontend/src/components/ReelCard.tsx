@@ -29,7 +29,7 @@ interface ReelCardProps {
 
 export function ReelCard({ reel, index, className }: ReelCardProps) {
   const title = reel.title ?? `Reel ${index + 1}`;
-  const filename = `reel-${index + 1}.mp4`;
+  const filename = reel.download_name ?? `reel-${index + 1}.mp4`;
 
   return (
     <div
@@ -59,7 +59,7 @@ export function ReelCard({ reel, index, className }: ReelCardProps) {
         <div className="flex items-center gap-1.5 shrink-0">
           <ShareMenu url={reel.url} title={title} />
           <a
-            href={reel.url}
+            href={reel.download_url ?? reel.url}
             download={filename}
             className="p-2.5 bg-text text-bg rounded-full hover:opacity-90 transition-colors"
             aria-label={`Download ${title}`}
