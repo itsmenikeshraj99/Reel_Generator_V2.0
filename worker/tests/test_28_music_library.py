@@ -90,6 +90,15 @@ async def main() -> bool:
             assert_(music.music_root().replace("\\", "/").endswith("worker/assets/music"), music.music_root())
     results.append(t["passed"])
 
+    with test_case("sfx folder: long files (music cues, not whooshes) are ignored") as t:
+        long_root = tempfile.mkdtemp(prefix="test28_sfx_")
+        os.makedirs(os.path.join(long_root, "sfx"))
+        make_tone(os.path.join(long_root, "sfx", "epic_cue.wav"), 20)
+        assert_(music.pick_sfx("v1", root=long_root) is None, "a 20 s file is not a transition sound")
+        make_tone(os.path.join(long_root, "sfx", "short.wav"), 1.5)
+        assert_(music.pick_sfx("v1", root=long_root).name == "short", "the short one is used")
+    results.append(t["passed"])
+
     with test_case("settings: kill switch on by default; loudness and music-level ranges are checked") as t:
         from worker.config import WorkerSettings
         s = WorkerSettings(_env_file=None, SUPABASE_URL="u", SUPABASE_KEY="k", GEMINI_API_KEY="g")

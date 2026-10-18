@@ -91,6 +91,22 @@ def measure_lufs(path: str, seconds: Optional[float] = None, start: float = 0.0)
     return {"lufs": num(i), "peak_db": num(p)}
 
 
+def sfx_start(path: str) -> float:
+    """Where the sound really begins: many effects open with a near-silent build-up, so the clip used
+    starts just before the first loud moment (within 6 dB of the loudest)."""
+    text = _run(["ffmpeg", "-nostats", "-hide_banner", "-v", "verbose", "-i", path, "-vn", "-af", "ebur128=framelog=verbose",
+                 "-f", "null", "-"]).stderr
+    points = []
+    for m in re.finditer(r"t:\s*([\d.]+)\s.*?M:\s*(-?[\d.]+|-inf)", text):
+        if m.group(2) != "-inf":
+            points.append((float(m.group(1)), float(m.group(2))))
+    if not points:
+        return 0.0
+    peak = max(v for _, v in points)
+    onset = next(t for t, v in points if v >= peak - 6.0)
+    return max(0.0, onset - 0.4)   # momentary loudness looks 0.4 s back
+
+
 def _loudnorm_json(text: str) -> Dict[str, str]:
     start = text.rfind("{")
     end = text.rfind("}")
@@ -164,14 +180,15 @@ def mix_reel(reel_path: str, out_path: str, track_path: str, *, join_times: Sequ
         labels = ["[sp]", "[mu]"]
         used_sfx = 0
         if sfx_path and join_times:
-            sfx_lufs = measure_lufs(sfx_path)["lufs"]
+            sfx_from = sfx_start(sfx_path)
+            sfx_lufs = measure_lufs(sfx_path, seconds=SFX_MAX_SECONDS, start=sfx_from)["lufs"]
             if sfx_lufs > SILENT_LUFS:
                 sfx_gain = _clamp(speech["lufs"] - SFX_BELOW_SPEECH_DB - sfx_lufs, *GAIN_RANGE_DB)
                 times = list(join_times)[:MAX_SFX]
                 inputs += ["-i", sfx_path]
                 n = len(times)
                 split = "[2:a]aresample=48000,aformat=channel_layouts=stereo," \
-                        f"atrim=0:{SFX_MAX_SECONDS},asetpts=PTS-STARTPTS,volume={sfx_gain:.2f}dB," \
+                        f"atrim={sfx_from:.3f}:{sfx_from + SFX_MAX_SECONDS:.3f},asetpts=PTS-STARTPTS,volume={sfx_gain:.2f}dB," \
                         f"afade=t=out:st={SFX_MAX_SECONDS * 0.5:.2f}:d={SFX_MAX_SECONDS * 0.5:.2f}"
                 if n == 1:
                     parts.append(split + "[s0]")
