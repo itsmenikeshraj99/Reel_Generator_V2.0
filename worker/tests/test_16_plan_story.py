@@ -59,7 +59,7 @@ async def main() -> bool:
         assert_("NOT ACCEPTED" not in p, "feedback block must be absent without feedback")
         assert_("NOT ACCEPTED" in ps.build_prompt(outline, SENTS, 38, ["be shorter"]) and "be shorter" in
                 ps.build_prompt(outline, SENTS, 38, ["be shorter"]), "feedback missing")
-        assert_("plan-story-v3" in ps.__doc__, "prompt version")
+        assert_("plan-story-v4" in ps.__doc__, "prompt version")
         for needle in ("title: a short headline", "at most 50 characters", "devanagari for hindi"):
             assert_(needle in p.lower(), f"title guidance missing: {needle!r}")
         low = p.lower()

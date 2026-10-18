@@ -15,6 +15,10 @@ worker/assets/music/
 The planner picks one mood word per reel (calm, upbeat, serious or inspiring); a track is chosen from
 that folder. If the chosen folder is empty, the reel simply has no music (it never fails because of it).
 
+## Sound effects
+`sfx/` holds short transition sounds (whooshes, 0.3 to 1 s). One is played, quietly, at each crossfade
+between montage beats. Same rules: drop a file in, optional `<name>.txt` for the source. Empty = no effect.
+
 ## How to add a track
 1. Pick a free-to-use track whose licence allows use in social videos (for example from the Pixabay music
    library). Check the licence yourself before you add it.
