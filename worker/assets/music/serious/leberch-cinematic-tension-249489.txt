@@ -1,0 +1,10 @@
+leberch-cinematic-tension-249489.txt
+------------------------------------
+Source:   Pixabay (pixabay.com)
+Type:     music (serious)
+Title:    cinematic tension (name taken from the file name)
+Artist:   Leberch (taken from the file name)
+Pixabay ID: 249489 (the number at the end of the file name)
+URL:      TO CONFIRM - open the track's Pixabay page and paste its address here
+Licence:  Pixabay Content Licence (https://pixabay.com/service/license-summary/)
+Added:    2026-10-18
