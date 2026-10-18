@@ -286,7 +286,7 @@ async def burn_captions(
             "-filter_threads", "1",
             "-i", video_path,
             "-vf", f"ass='{safe_ass}'{fonts_opt}",
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-crf", "20",
             "-c:a", "copy",  # never re-encode audio here
             "-movflags", "+faststart",
             output_path,

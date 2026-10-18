@@ -119,7 +119,7 @@ async def main() -> bool:
         assert_("xfade=transition=fade:duration=0.300:offset=7.700" in fc, "first offset = clip length - fade")
         assert_("duration=0.300:offset=23.400" in fc, "the third fade starts after 8+8+8 seconds minus the first overlap")
         assert_(fc.count("settb=1/30,setpts=PTS-STARTPTS[vj") == 1, "timebase is normalised after the concat")
-        assert_(abs(g.length - 31.4) < 1e-9 and g.video_label == "vj3" and g.audio_label == "aj3", f"{g.length} {g.video_label}")
+        assert_(abs(g.length - 31.4) < 1e-9 and g.video_label == "vout" and "[vj3]format=yuv420p[vout]" in fc and g.audio_label == "aj3", f"{g.length} {g.video_label}")
         for i in range(4):
             assert_(f"[{i}:v]" in fc and f"[{i}:a]" in fc, f"input {i} missing")
         silent = tr.build_graph([8, 8], [0.3, 0.0], has_audio=False)

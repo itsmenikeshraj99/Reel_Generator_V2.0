@@ -72,6 +72,7 @@ TESTS: List[Tuple[str, str]] = [
     ("test_28_music_library", "Test 28: Music library"),
     ("test_29_music_mix", "Test 29: Music mix"),
     ("test_30_music_wire", "Test 30: Music in the pipeline"),
+    ("test_31_output_format", "Test 31: Output is a shareable MP4"),
 ]
 
 

@@ -95,7 +95,9 @@ def build_graph(durations: Sequence[float], overlaps: Sequence[float], has_audio
                 parts.append(f"[{cur_a}][a{i}]concat=n=2:v=0:a=1[{na}]")
             cur_len += durations[i]
         cur_v, cur_a = nv, na
-    return Graph(";".join(parts), cur_v, cur_a if has_audio else None, cur_len)
+    # xfade hands back 4:4:4 video, which only VLC-class players can open; always deliver standard 4:2:0.
+    parts.append(f"[{cur_v}]format=yuv420p[vout]")
+    return Graph(";".join(parts), "vout", cur_a if has_audio else None, cur_len)
 
 
 def probe_duration(path: str) -> float:
@@ -127,7 +129,7 @@ def build_command(clips: Sequence[str], overlaps: Sequence[float], output_path: 
     cmd += ["-filter_complex", graph.filter_complex, "-map", f"[{graph.video_label}]"]
     if audio:
         cmd += ["-map", f"[{graph.audio_label}]"]
-    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-crf", str(crf)]
+    cmd += ["-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-crf", str(crf)]
     cmd += ["-c:a", "aac", "-b:a", f"{audio_kbps}k"] if audio else ["-an"]
     cmd += ["-movflags", "+faststart", output_path]
     return cmd, graph
