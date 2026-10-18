@@ -1,0 +1,10 @@
+lnplusmusic-inspiring-inspiring-cinematic-610925.txt
+----------------------------------------------------
+Source:   Pixabay (pixabay.com)
+Type:     music (inspiring)
+Title:    inspiring inspiring cinematic (name taken from the file name)
+Artist:   LNPlusMusic (taken from the file name)
+Pixabay ID: 610925 (the number at the end of the file name)
+URL:      TO CONFIRM - open the track's Pixabay page and paste its address here
+Licence:  Pixabay Content Licence (https://pixabay.com/service/license-summary/)
+Added:    2026-10-18
