@@ -66,7 +66,7 @@ async def render_draft(
                 "ffmpeg", "-y", "-loglevel", "error", "-threads", "1",
                 "-ss", f"{c['start']:.3f}", "-i", video_path, "-t", f"{c['dur']:.3f}",
                 "-vf", f"scale=-2:{DRAFT_HEIGHT},setsar=1", "-r", "24",
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "32",
+                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-crf", "32",
                 "-c:a", "aac", "-ar", "44100", "-ac", "2", "-b:a", "64k",
                 part,
             ])

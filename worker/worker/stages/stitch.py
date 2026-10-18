@@ -106,7 +106,7 @@ async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_pa
                 "-ss", str(seg["start_time"]),
                 "-to", str(seg["end_time"]),
                 "-i", video_path,
-                "-c:v", "libx264", "-preset", "ultrafast", "-crf", "23",
+                "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-crf", "23",
                 "-c:a", "aac", "-b:a", "128k",
                 clip_path,
             ])
@@ -132,7 +132,7 @@ async def stitch_and_caption(pipeline, video_id: str, video_path: str, output_pa
             "-f", "concat", "-safe", "0",
             "-i", concat_list_path,
             "-vf", fit_filter(),
-            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "20",
+            "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p", "-crf", "20",
             "-c:a", "aac", "-b:a", "192k",
             "-af", "aresample=async=1",  # fix any A/V drift between cuts
             "-movflags", "+faststart",

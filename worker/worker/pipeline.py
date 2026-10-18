@@ -580,7 +580,7 @@ class Pipeline:
                         "-threads", "1",
                         "-filter_threads", "1",
                         "-i", final_path,
-                        "-c:v", "libx264", "-preset", "ultrafast",
+                        "-c:v", "libx264", "-preset", "ultrafast", "-pix_fmt", "yuv420p",
                         "-b:v", str(int(target_video_bitrate)),
                         "-maxrate", str(int(target_video_bitrate * 1.2)),
                         "-bufsize", str(int(target_video_bitrate * 2)),
